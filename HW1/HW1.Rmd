@@ -1,0 +1,338 @@
+---
+title: "HW1: Data Visualization with ggplot2 "
+output: html_document
+---
+
+The data set contains information about flights going through the Houston airport in the year 2011. 
+
+```{r, echo=FALSE}
+# Load googleVis package while suppressing any startup messages
+if(!"googleVis" %in% installed.packages())
+  install.packages("googleVis", repos='http://cran.us.r-project.org')
+
+suppressPackageStartupMessages(library(googleVis))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(rvest))
+suppressPackageStartupMessages(library(lubridate))
+
+flights <- read.csv("flights.csv", stringsAsFactors = FALSE) %>%
+  tbl_df() %>%
+  mutate(date=as.Date(date))
+weather <- read.csv("weather.csv", stringsAsFactors = FALSE) %>%
+  tbl_df() %>%
+  mutate(date=as.Date(date))
+planes <- read.csv("planes.csv", stringsAsFactors = FALSE) %>% tbl_df()
+airports <- read.csv("airports.csv", stringsAsFactors = FALSE) %>% tbl_df()
+state.info <- read.csv("states.csv", header=TRUE) %>% tbl_df()
+```
+
+## Question 1:
+
+* Plot a "time series" of the number of flights that were delayed by > 30 minutes on each day.  i.e.
+    + the x-axis should be some notion of time
+    + the y-axis should be the proportion.
+* Which seasons did we tend to see the most and least delays of > 30 minutes.
+
+We can start looking at the time scale of every day. Count the number of flights delayed then make the bar chart.
+
+```{r}
+#From flights, pick dep_delays over 30 min. Count number of delayed flights each day.
+delay <- flights %>% filter(dep_delay > 30) %>% select(date, dep_delay) %>% na.omit(delay) %>%
+  group_by(date) %>% summarize(count_del = n()) 
+#Total flights per day.
+countdata <- na.omit(flights) %>% count(date)
+#Combine and make proportion.
+delay <- left_join(delay, countdata, by = "date") %>% group_by(date) %>%
+  mutate(del_perc = round(1000*(count_del / n))/10)
+```
+
+```{r,echo=FALSE, fig.width=10, fig.height=6}
+ggplot(data = delay, aes(x = date, y = del_perc, fill = factor(round(n/100)*100))) + 
+  geom_bar(stat = "identity") + xlab("Day") + ylab("Percent of Delayed Flights") +
+  ggtitle("Percent of Flights Delayed\nby Day") +
+  scale_fill_discrete("Number of Flights\nper Day")
+```
+
+...but it's hard to tell what's going on really. We can see that the days with the largest number of delayed flights also seem to correspond to the days with the most flights, though that isn't always the case. Let's try grouping by month:
+
+```{r}
+#Use lubridate package to assign month and find percentage of delayed flights by month.
+mdelay <- delay %>% mutate(month = month(date, label = TRUE)) %>% group_by(month) %>% 
+  summarize(a = sum(count_del), b = sum(n)) %>% mutate(mperc = round(1000*(a)/b)/10)
+```
+```{r, echo=FALSE, fig.width=10, fig.height=6}
+ggplot(mdelay, aes(x = month, y = mperc, fill = factor(round(b/1000)*1000))) + 
+  geom_bar(stat = "identity") + xlab("Month") + ylab("Percent of Delayed Flights") +
+  ggtitle("Percent of Flights Delayed\nby Month") + 
+  scale_fill_discrete("Number of Flights\nper Month")
+```
+
+This is a little clearer. First of all, we see that delays start building up until they reach a peak during July. After that, the only really noticable delay month is December. Maybe the airport made a change in August, which resulted in fewer delayed flights? We suspect this because even thought July and August both have 20k flights, there is a drastic reduction in the percentage of delays. Perhaps airports have fewer staff during the summer and in December, since people want to vacation with their families.
+
+To sum up, the fall season saw the lowest delay percentage. Meanwhile, summer, followed by spring and then winter, saw the highest percentage of delayed flights. 
+
+## Question 2:
+
+I actually prefer flying on older planes.  Even though they aren't as nice, they tend to have more room.  Which airlines should I favor?
+
+```{r}
+#Join flights and planes, keeping the year the plane was made and the carrier.
+favair <- left_join(flights, planes, by = "plane") %>% select(year, carrier, plane) %>% na.omit(favair)
+#Make the median of each carrier.
+favair_med <- favair %>% group_by(carrier) %>% summarize(med_year = median(year), mean_year = mean(year))
+```
+
+We'll look at both the mean and the median, because they will tell us slightly different things. The median will tell us the age of the plane we will probably get. The mean might alert us to the fact that a company might have a couple of very old planes.
+
+```{r, echo=FALSE, fig.width=10, fig.height=6}
+favair_med$carrier <- factor(favair_med$carrier, 
+                             levels = favair_med$carrier[order(desc(favair_med$med_year))])
+
+ggplot(favair_med, aes(x = carrier, y = med_year)) + geom_point(size = 5) + 
+  xlab("Airline") + ylab("Median Year Built") + ggtitle("Median Year of Planes by Airline Carrier")
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=6}
+favair_med$carrier <- factor(favair_med$carrier, 
+                             levels = favair_med$carrier[order(desc(favair_med$mean_year))])
+
+ggplot(favair_med, aes(x = carrier, y = mean_year)) + geom_point(size = 5) + 
+  xlab("Airline") + ylab("Mean Year Built") + ggtitle("Mean Year of Planes by Airline Carrier")
+```
+
+Both plots indicate that you should be flying:  
+  1) Envoy Air  
+  2) American Airlines  
+  3) Delta  
+  4) US Airways  
+  5) United  
+  6) Southwest Airlines.
+  
+It seems like the largest carriers tend to have the oldest fleets, this makes sense since they've been around awhile and it the more planes you have, the more expensive it gets to replace all of 'em. Just out of curiosity, let's look at mean year the planes were built and the number of flights they have (since we can't directly measure the size of their fleet).
+
+```{r}
+#Find number of unique planes by grouping together the planes and adding them up to find carrier totals. 
+favair_size <- favair %>% group_by(plane, carrier) %>% summarize() %>% group_by(carrier) %>% 
+  summarize(count = n()) 
+#Merge to get mean ages.
+favair_size <- suppressWarnings(left_join(favair_size, favair_med, by = "carrier"))
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=6}
+favair_size$carrier <- factor(favair_size$carrier, 
+                             levels = favair_size$carrier[order(desc(favair_size$mean_year))])
+
+ggplot(favair_size, aes(x = count, y = mean_year, color = carrier)) + geom_point(size = 5) + 
+  xlab("Number of Different Planes") + ylab("Mean Year Built") + 
+  ggtitle("Size of Fleet vs. Mean Plane Age by Airline Carrier") + scale_color_discrete("Carriers")
+```
+
+Unfortunately, we don't get a clear trend anywhere. We can see that the carriers with the newest planes have between 50-200 planes presumably because there are fewer to replace, or the airline just started up and bought the newest planes. 
+
+
+## Question 3:
+
+* What states did listed Southwest Airlines flights tend to fly to?
+* What states did all Southwest Airlines flights tend to fly to?
+
+We'll combine the flight data's dest variable with the iata variable in the airports data frame.
+
+```{r}
+#Start with flights data and select Southwest and non-cancelled flights.
+swst <- flights %>% filter(carrier == "WN") %>% filter(cancelled == 0) %>% 
+  select(dest) %>% arrange(dest) %>% group_by(dest)
+#Combine with airports data, and clean.
+swst <- left_join(swst, airports, by = c("dest" = "iata")) %>% group_by(state, lat, long, city) %>% 
+  summarize(count = n()) %>% na.omit(swst)
+#Combine with state name. 
+swst <- suppressWarnings(left_join(swst, state.info, by ="state")) 
+
+unique(swst$state)
+```
+So thats Alabama, Arkansas, Arizona, California, Colorado, Florida, Illinois, Louisiana, Maryland, Missouri, Mississippi, New Jersey, New Mexico, Nevada, Oklahoma, Pennsylvania, South Carolina, Tennessee, and Texas.
+
+Southwest flies to 19 states, from Houston. We now go on to the second part of the question: how many times did SW fly to each state?
+
+```{r, echo = FALSE, fig.width=10, fig.height=6}
+ggplot(data = swst, aes(x = state, y = count)) + geom_bar(stat = "identity") + 
+  ggtitle("Number of Southwest Flights by Destination") + xlab("State") + ylab("Number of Flights")
+```
+
+Texas (no surprise) is the state flown to the most. We can visualize individual destinations by plotting them on a map. Taking a log of the total number of flights to that city will help spread things out a little (since there is such a huge number of flights to Dallas, every other city is dwarfed by comparison.)
+
+```{r}
+swst$LogOfCount <- round(log(swst$count)*10)/10
+```
+```{r results="asis", echo = FALSE}
+swst$latlong<-paste(swst$lat, swst$long, sep=":")
+swst$city<-paste(swst$city, swst$state, sep=", ")
+swst$Count <- swst$count
+
+require(datasets)
+
+GeoMarker <- gvisGeoMap(swst, 
+                        locationvar = "latlong", 
+                        numvar = "LogOfCount", 
+                        hovervar = "city",
+                        options=list(region="US", 
+                                       dataMode = "Markers",
+                                       width=900, height=600))
+
+print(GeoMarker, "chart")
+```
+
+## Question 4:
+
+What weather patterns are associated with the biggest departure delays?
+
+The weather data is taken at each hour, but the flight data is specific to the minute. It makes more sense to look at delays by hour. 
+
+```{r}
+#Modify flights data set.
+dfl <- flights %>% select(date, hour, dep_delay) %>% group_by(date, hour, dep_delay)
+#Combine flights with weather information.
+dfl <- left_join(dfl, weather, by = c("date","hour")) %>% arrange(date, hour) %>% na.omit(dfl)
+mean(dfl$dep_delay)
+```
+
+Note that the mean difference from the scheduled departure time is 13.5 minutes (this includes delays and leaving early).
+
+Let's start with an obvious one: how does visibility affect delays? We'll use color to keep track of the amount of each event (rounded to the nearest 20) so that we can spot the outliers.
+
+```{r}
+visdel <- dfl %>% group_by(visibility) %>% summarise(mean_del = mean(dep_delay), count = round(n()/20)*20)
+```
+```{r, echo=FALSE,fig.width=12, fig.height=5}
+ggplot(visdel, aes(x = visibility, y=mean_del, color = as.factor(count))) + geom_point(size = 5) +
+  geom_hline(aes(yintercept=13.5)) + xlab("Visibility") + ylab("Mean Delay (min)") + 
+                   ggtitle("Delays vs. Visibility") + scale_color_discrete("Number of\nFlights")
+```
+
+We see that it only really has a large effect (about an hour) at the lowest (0.5) visibility, but for everything else is pretty close to the mean of 13.5 min (represented by the black line). Although there is one other outlier at 8.0 visibility (with a sample of 146 points out of 2300, so its not nothing) where the average delay is 40 min.
+
+What about if we group by events?
+
+```{r}
+for(i in seq(1:nrow(dfl))){
+  if(dfl$events[i] != "Fog-Rain" & dfl$events[i] != "Rain" & dfl$events[i] != "Rain-Thunderstorm") {
+    dfl$events[i] = "None"
+  }
+}
+evdel <- dfl %>% group_by(events) %>% summarise(mean_del = mean(dep_delay), count = round(n()/20)*20)
+```
+```{r, echo=FALSE,fig.width=12, fig.height=5}
+suppressWarnings(print(ggplot(evdel, aes(x = events, y=mean_del, fill = as.factor(count))) + 
+                   geom_bar(stat="identity") +
+                   geom_hline(aes(yintercept=13.5)) + xlab("Events") + ylab("Mean Delay (min)") + 
+                   ggtitle("Delays vs. Events") + scale_fill_discrete("Number of\nFlights")))
+```
+
+Interesting, we get about the same average delay for 0.5 visibility as we do for the event "Fog-Rain", as if they were somehow related!
+
+```{r}
+condel <- dfl %>% group_by(conditions) %>% summarise(mean_del = mean(dep_delay), count = round(n()/20)*20)
+```
+```{r, echo=FALSE,fig.width=12, fig.height=5}
+suppressWarnings(print(ggplot(condel, aes(x = conditions, y=mean_del, fill = as.factor(count))) + 
+                   geom_bar(stat="identity") +
+                   geom_hline(aes(yintercept=13.5)) + xlab("Conditions") + ylab("Mean Delay (min)") + 
+                   ggtitle("Delays vs. Conditions") + scale_fill_discrete("Number of\nFlights") + 
+                   theme(axis.text.x=element_text(angle=45, hjust=1))   ))
+```
+
+We get similar information with this plot too. A light drizzle speeds things up, but heavier rain is a killer!
+
+What about wind?
+
+```{r}
+windel <- dfl %>% group_by(wind_speed) %>% summarise(mean_del = mean(dep_delay), count = round(n()/20)*20)
+```
+```{r, echo=FALSE,fig.width=12, fig.height=5}
+ggplot(windel, aes(x = wind_speed, y=mean_del, color = as.factor(count))) + geom_point(size = 5) +
+  geom_hline(aes(yintercept=13.5)) + xlab("Wind Speed") + ylab("Mean Delay (min)") + 
+  ggtitle("Delays vs. Wind Speed") + scale_color_discrete("Number of\nFlights")
+```
+
+Wow! In the few cases the wind speed makes it all the way to about 40 mph, the average delay is about 90 minutes! That rarely seems to happen though.
+
+To sum it up, we notice large delays for:   
+  - Low visibility (0.5/10)  
+  - Fog-Rain  
+  - Rain (not including Drizzling)  
+  - Strong Wind (~40 mph)  
+  
+## Question 5:
+
+I want to know what proportionately regions (NE, south, west, midwest) each carrier flies to from Houston in the month of July.  Consider the `lubridate` package.
+
+```{r}
+#Pick out flights in July.
+julfl <- mutate(flights, month = month(flights$date)) %>% group_by(month) %>% filter(month == 7) 
+#Join with locations of airports.
+julfl <- left_join(julfl, airports, by = c("dest" ="iata")) 
+#Join with regions
+julfl <- suppressWarnings(left_join(julfl, state.info, by = "state")) %>% group_by(region) %>% select(region)
+julfl <- na.omit(julfl) %>% mutate(perc = round(10000*(n()/nrow(julfl)))/100)
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=6}
+ggplot(julfl, aes(x = region, fill = factor(perc))) + geom_histogram() + 
+  ggtitle("Counts US Regions of flights from Houston in July") + 
+  scale_fill_discrete("Percentage of\nTotal Flights") + xlab("Region") + ylab("Number of Flights")
+```
+
+Lost like a majority of the flights (57.4%) are in the south, as we might expect. The northeast has the fewest number of flights (7%) since its so far away and generally pretty boring. The reason we don't get a full 100% is because some are NA, e.g. Alaska or Hawai'i, and while we won't include them in our bar chart, it would be misleading to skew the percentages.
+
+## Question 6:
+
+Get creative:  Answer one question of your own using this data.  The more interesting the question the better.
+
+I want to focus more on delayed flights:  
+  * What day of the week sees the highest proportion of delay flights (by at least 30 min)?  
+  * Do the number of flights on a given day have anything to do with the percentage of delays?  
+  * At what time do we see the greatest proportion of delays? 
+
+```{r}
+ddelay <- delay %>% mutate(day = wday(date, label = TRUE, abbr = TRUE)) %>% group_by(day) %>% 
+  summarize(a = sum(count_del), b = sum(n)) %>% mutate(dperc = round(1000*(a)/b)/10)
+```
+```{r, echo=FALSE, fig.width=10, fig.height=6}
+ggplot(ddelay, aes(x = day, y = dperc, fill = factor(round(b/1000)*1000))) + 
+  geom_bar(stat = "identity") + xlab("Week Day") + ylab("Percent of Delayed Flights") +
+  ggtitle("Percent of Flights Delayed\n by Week Day") + 
+  scale_fill_discrete("Total Number of Flights\nby Week Day")
+```
+
+Unlike when we split the data up by months, here we can see a clear trend between the number of flights and the proportion of delayed flights. More flights results in more delays. The reason we can see it here, and not in the monthly data, is that weeks are more "regular". No one wants to fly on a Saturday because they want to spend that day at their destination. Thus Saturday is the day of fewest flights and fewest delays. Everyone wants to leave on Thrusday so they get to miss a day of work and spend a long weekend at their destination, or get back with enough time to prepare for work the following week.
+
+We can use our data prepared in the first question to try to answer the second part of the question.
+
+```{r, echo=FALSE, fig.width=10, fig.height=6}
+ggplot(delay, aes(x = n, y = log(del_perc))) + geom_point() + geom_smooth(method = lm) + 
+  xlab("Number of Flights per Day") + ylab("Log(Delay Percentage)") + 
+  ggtitle("Number of Flights vs. Percent of Delayed")
+```
+
+So it looks like overall, we get a slight trend, but its not exactly perfect. 
+
+Finally, moving on to the last part of the question involving looking at the time of day of delays.
+
+```{r}
+#Select from flights data set, flights that are delayed and at what hour they left.
+hdelay <- flights %>% filter(dep_delay > 30) %>% select(hour, dep_delay) %>% na.omit(delay) %>%
+  group_by(hour) %>% summarize(count_del = n()) 
+#Total flights by hour.
+hcountdata <- na.omit(flights) %>% count(hour)
+#Combine and make proportion.
+hdelay <- left_join(hdelay, hcountdata, by = "hour") %>% group_by(hour) %>%
+  mutate(hperc = round(1000*(count_del / n))/10)
+```
+```{r, echo=FALSE, fig.width=10, fig.height=6}
+ggplot(hdelay, aes(x = hour, y = hperc, fill = n)) + 
+  geom_bar(stat = "identity") + xlab("Time of Day") + ylab("Percent of Delayed Flights") +
+  ggtitle("Percent of Flights Delayed\n by Time of Day") + 
+  scale_fill_continuous("Total Number of Flights\nby Time")
+```
+
+Ah-HA! Just as expected. The first couple of flights leave on time, but eventually some event like a minor plane error or an extra long refueling session or a risky weather pattern will cause a slight delay. A flight might depart a couple of minutes late, which means it will arrive a couple of minutes late. This means even more flights will depart late (so that everyone with connecting flights doesn't miss their connection), which means even more flights will arrive late. The problem is exacerbated over time since the delays keep compiling, until the entire process resets on the following day. It's interesting to note that almost none of the flights that leave past 11PM are leaving on time; at some hours, the delay proportion reaches 100%.
