@@ -1,5 +1,6 @@
 ---
-title: "HW1: Data Visualization with ggplot2 "
+title: "HW1: Data Visualization with ggplot2"
+author: "Miguel Conner"
 output: html_document
 ---
 
@@ -47,7 +48,7 @@ delay <- left_join(delay, countdata, by = "date") %>% group_by(date) %>%
   mutate(del_perc = round(1000*(count_del / n))/10)
 ```
 
-```{r,echo=FALSE, fig.width=10, fig.height=6}
+```{r, fig.width=10, fig.height=6}
 ggplot(data = delay, aes(x = date, y = del_perc, fill = factor(round(n/100)*100))) + 
   geom_bar(stat = "identity") + xlab("Day") + ylab("Percent of Delayed Flights") +
   ggtitle("Percent of Flights Delayed\nby Day") +
@@ -61,7 +62,7 @@ ggplot(data = delay, aes(x = date, y = del_perc, fill = factor(round(n/100)*100)
 mdelay <- delay %>% mutate(month = month(date, label = TRUE)) %>% group_by(month) %>% 
   summarize(a = sum(count_del), b = sum(n)) %>% mutate(mperc = round(1000*(a)/b)/10)
 ```
-```{r, echo=FALSE, fig.width=10, fig.height=6}
+```{r, fig.width=10, fig.height=6}
 ggplot(mdelay, aes(x = month, y = mperc, fill = factor(round(b/1000)*1000))) + 
   geom_bar(stat = "identity") + xlab("Month") + ylab("Percent of Delayed Flights") +
   ggtitle("Percent of Flights Delayed\nby Month") + 
@@ -85,20 +86,20 @@ favair_med <- favair %>% group_by(carrier) %>% summarize(med_year = median(year)
 
 We'll look at both the mean and the median, because they will tell us slightly different things. The median will tell us the age of the plane we will probably get. The mean might alert us to the fact that a company might have a couple of very old planes.
 
-```{r, echo=FALSE, fig.width=10, fig.height=6}
+
+```{r, fig.width=10, fig.height=6}
 favair_med$carrier <- factor(favair_med$carrier, 
-                             levels = favair_med$carrier[order(desc(favair_med$med_year))])
+                             levels = favair_med$carrier[order(favair_med$med_year)])
 
 ggplot(favair_med, aes(x = carrier, y = med_year)) + geom_point(size = 5) + 
   xlab("Airline") + ylab("Median Year Built") + ggtitle("Median Year of Planes by Airline Carrier")
 ```
 
-```{r, echo=FALSE, fig.width=10, fig.height=6}
-favair_med$carrier <- factor(favair_med$carrier, 
-                             levels = favair_med$carrier[order(desc(favair_med$mean_year))])
+We might get a better idea of what's going on if we use boxplots:
 
-ggplot(favair_med, aes(x = carrier, y = mean_year)) + geom_point(size = 5) + 
-  xlab("Airline") + ylab("Mean Year Built") + ggtitle("Mean Year of Planes by Airline Carrier")
+```{r, fig.width=10, fig.height=6}
+ggplot(favair, aes(x = reorder(carrier, year, FUN=median), y = year)) + geom_boxplot() + 
+  xlab("Airline") + ylab("Year Plane was Built") + ggtitle("Year Plane was Built by Airline Carrier")
 ```
 
 Both plots indicate that you should be flying:  
@@ -119,7 +120,7 @@ favair_size <- favair %>% group_by(plane, carrier) %>% summarize() %>% group_by(
 favair_size <- suppressWarnings(left_join(favair_size, favair_med, by = "carrier"))
 ```
 
-```{r, echo=FALSE, fig.width=10, fig.height=6}
+```{r, fig.width=10, fig.height=6}
 favair_size$carrier <- factor(favair_size$carrier, 
                              levels = favair_size$carrier[order(desc(favair_size$mean_year))])
 
@@ -154,7 +155,7 @@ So thats Alabama, Arkansas, Arizona, California, Colorado, Florida, Illinois, Lo
 
 Southwest flies to 19 states, from Houston. We now go on to the second part of the question: how many times did SW fly to each state?
 
-```{r, echo = FALSE, fig.width=10, fig.height=6}
+```{r, fig.width=10, fig.height=6}
 ggplot(data = swst, aes(x = state, y = count)) + geom_bar(stat = "identity") + 
   ggtitle("Number of Southwest Flights by Destination") + xlab("State") + ylab("Number of Flights")
 ```
@@ -164,10 +165,9 @@ Texas (no surprise) is the state flown to the most. We can visualize individual 
 ```{r}
 swst$LogOfCount <- round(log(swst$count)*10)/10
 ```
-```{r results="asis", echo = FALSE}
+```{r results="asis"}
 swst$latlong<-paste(swst$lat, swst$long, sep=":")
 swst$city<-paste(swst$city, swst$state, sep=", ")
-swst$Count <- swst$count
 
 require(datasets)
 
@@ -221,7 +221,7 @@ for(i in seq(1:nrow(dfl))){
 }
 evdel <- dfl %>% group_by(events) %>% summarise(mean_del = mean(dep_delay), count = round(n()/20)*20)
 ```
-```{r, echo=FALSE,fig.width=12, fig.height=5}
+```{r,fig.width=12, fig.height=5}
 suppressWarnings(print(ggplot(evdel, aes(x = events, y=mean_del, fill = as.factor(count))) + 
                    geom_bar(stat="identity") +
                    geom_hline(aes(yintercept=13.5)) + xlab("Events") + ylab("Mean Delay (min)") + 
@@ -272,17 +272,20 @@ julfl <- mutate(flights, month = month(flights$date)) %>% group_by(month) %>% fi
 #Join with locations of airports.
 julfl <- left_join(julfl, airports, by = c("dest" ="iata")) 
 #Join with regions
-julfl <- suppressWarnings(left_join(julfl, state.info, by = "state")) %>% group_by(region) %>% select(region)
-julfl <- na.omit(julfl) %>% mutate(perc = round(10000*(n()/nrow(julfl)))/100)
+julfl <- suppressWarnings(left_join(julfl, state.info, by = "state")) %>% group_by(region, carrier) %>% 
+  select(region, carrier)
+julfl <- na.omit(julfl) %>% mutate(count = n()) %>% group_by(carrier, region) %>% arrange(carrier)
 ```
 
-```{r, echo=FALSE, fig.width=10, fig.height=6}
-ggplot(julfl, aes(x = region, fill = factor(perc))) + geom_histogram() + 
-  ggtitle("Counts US Regions of flights from Houston in July") + 
-  scale_fill_discrete("Percentage of\nTotal Flights") + xlab("Region") + ylab("Number of Flights")
+```{r, fig.width=10, fig.height=6}
+ggplot(julfl, aes(x = carrier, y = count, fill = region)) + 
+  geom_bar(stat = "identity", position = "fill") + 
+  ggtitle("Proportion of Regions for Each Airlines") + 
+  scale_fill_discrete("Region") + xlab("Airlines") + ylab("Proportion of Regions")
 ```
 
-Lost like a majority of the flights (57.4%) are in the south, as we might expect. The northeast has the fewest number of flights (7%) since its so far away and generally pretty boring. The reason we don't get a full 100% is because some are NA, e.g. Alaska or Hawai'i, and while we won't include them in our bar chart, it would be misleading to skew the percentages.
+It looks like a couple of airlines fly to only one region, and almost all seem to serve primarily one region.
+
 
 ## Question 6:
 
@@ -297,7 +300,7 @@ I want to focus more on delayed flights:
 ddelay <- delay %>% mutate(day = wday(date, label = TRUE, abbr = TRUE)) %>% group_by(day) %>% 
   summarize(a = sum(count_del), b = sum(n)) %>% mutate(dperc = round(1000*(a)/b)/10)
 ```
-```{r, echo=FALSE, fig.width=10, fig.height=6}
+```{r, fig.width=10, fig.height=6}
 ggplot(ddelay, aes(x = day, y = dperc, fill = factor(round(b/1000)*1000))) + 
   geom_bar(stat = "identity") + xlab("Week Day") + ylab("Percent of Delayed Flights") +
   ggtitle("Percent of Flights Delayed\n by Week Day") + 
@@ -308,7 +311,7 @@ Unlike when we split the data up by months, here we can see a clear trend betwee
 
 We can use our data prepared in the first question to try to answer the second part of the question.
 
-```{r, echo=FALSE, fig.width=10, fig.height=6}
+```{r,  fig.width=10, fig.height=6}
 ggplot(delay, aes(x = n, y = log(del_perc))) + geom_point() + geom_smooth(method = lm) + 
   xlab("Number of Flights per Day") + ylab("Log(Delay Percentage)") + 
   ggtitle("Number of Flights vs. Percent of Delayed")
@@ -328,7 +331,7 @@ hcountdata <- na.omit(flights) %>% count(hour)
 hdelay <- left_join(hdelay, hcountdata, by = "hour") %>% group_by(hour) %>%
   mutate(hperc = round(1000*(count_del / n))/10)
 ```
-```{r, echo=FALSE, fig.width=10, fig.height=6}
+```{r, fig.width=10, fig.height=6}
 ggplot(hdelay, aes(x = hour, y = hperc, fill = n)) + 
   geom_bar(stat = "identity") + xlab("Time of Day") + ylab("Percent of Delayed Flights") +
   ggtitle("Percent of Flights Delayed\n by Time of Day") + 
