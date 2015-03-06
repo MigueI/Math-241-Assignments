@@ -128,7 +128,7 @@ p + geom_abline(intercept=b[1], slope=b[3], col="#F8766D", size=1) +
   geom_abline(intercept=b[1]+b[2], slope=b[3]+b[4], col="#00BFC4", size=1)
 ```
 
-In this case, our model spits out four coefficients. Since we're fitting two lines, we need two different slope intercepts and two different slopes. The first coefficient is the intercept of the bottom line (lower than average sulfur dioxide levels). The second coefficient is the additional distance, from the first intercept to the intercept of the top line (higher than average sulfur dioxide levels). Finally, the third coefficient gives the slope of the first line, and the sum of the third and fourth coefficients give the slope of the second line.  
+In this case, our model spits out four coefficients. Since we're fitting two lines, we need two different slope intercepts and two different slopes. The first coefficient is the intercept of the bottom line (lower than average sulfur dioxide levels). The second coefficient is the additional distance, from the first intercept to the intercept of the top line (higher than average sulfur dioxide levels). Finally, the third coefficient gives the slope of the first line, and the sum of the third and fourth coefficients give the slope of the second line. Our interaction model is fitting a coefficient for the log of the nitric oxide levels, a coefficient for the above/below average sulfur dioxide levels, and then a third coefficient for both of these terms.  
 
 ### e) Test the Model
 *Cross-validate: fit the model you chose above to the first half of the data and then predict for the second half. (You used all the data to construct the model in (d), so this is not really cross-validation, but it gives a sense of how the steps of cross-validation can be implemented.)*
@@ -162,14 +162,18 @@ ggplot(pollutionb, aes(mort, predictions)) + geom_point(size = 3) +
 
 An perfect prediction puts all points on the line x = y. Here we see that all of our data points surround this line, but we also have more than a few outliers. 
 
-We can also try using all three metrics of air pollution (NOX, SO2, and HC), though this is a little harder to see graphically. Our model would start with all three variables 
+We can also try using all three metrics of air pollution (NOX, SO2, and HC), though this is a little harder to see graphically. Our interaction model starts with all three variables. 
 
 ```{r}
 # Make new model.
 allmodela <- lm(mort ~ so2 * log(nox) * log(hc), data=pollutiona)
 allba <- coefficients(allmodela)
 allba
+```
 
+We get a coefficient for each predictor on its own, then another for each combination interaction pair, a predictor for an interaction between the three, and then the slope intercept. Note that the largest effects come from log(nox), log(hc), and the interaction between log(nox) and log(hc).
+
+```{r}
 # Use model to make predictions, then plot them.
 pollutionb$allpredictions <- predict(allmodela, pollutionb)
 ggplot(pollutionb, aes(mort, allpredictions)) + 
@@ -181,7 +185,7 @@ ggplot(pollutionb, aes(mort, allpredictions)) +
   ggtitle("Using log(NOX), SO2, and log(HC) Levels as Predictors ")
 ```
 
-This seems to fit a lot better (we've got a couple of points on the line), but we still have a couple of outliers. 
+This seems to fit a lot better (we've got a couple of points on the line), but we still have a few outliers. 
 
 ## Question 2:
 
@@ -189,13 +193,13 @@ This seems to fit a lot better (we've got a couple of points on the line), but w
 
 *Think about what happens when your prediction mechanism is overly optimized for your particular dataset. What will happen when it tries to predict other datasets?*
 
-We need to be careful about our prediction method: too specific and we "overfit" the data, but too general and we don't gain any meaningful information. We're looking for the sweetspot in between. To this end, our model will require only three inputs: 
+We need to be careful about our prediction method: too specific and we "overfit" the data, but too general and we don't gain any meaningful information. We're looking for the sweetspot in between. We can also avoid this problem by looking for distinct differences in large populations, since they will likely to hold for new data as well. To this end, our model will require only three inputs: 
+
+* whether or not they work in tech,
 
 * height,
 
-* use of the word 'laugh,'
-
-* and ?
+* and 'curvy' or 'atheltic' body types.
 
 I will give justification for including all three of these parameters, then make a model, train it, and finally, test it.
 
@@ -222,71 +226,47 @@ A quick histogram shows that the taller person is more likely to be a guy.
 
 ```{r}
 ggplot(profiles, aes(height, fill = sex)) + 
-  geom_histogram()
+  geom_histogram(binwidth = 1)
 ```
 
-### Has "Laugh"
+### Works in Tech or with Computers
+
+Diversity in typically male dominated fields like the tech industry or 'hard sciences' (physics and engineering) has been a difficult issue for our society. Do some of these stereotypes hold for our OKCupid  profiles?
 
 ```{r}
-# Functions from class
-find.query <- function(char.vector, query){
-  which.has.query <- grep(query, char.vector, ignore.case = TRUE)
-  length(which.has.query) != 0
-}
-
-profile.has.query <- function(data.frame, query){
-  query <- tolower(query)
-  has.query <- apply(data.frame, 1, find.query, query=query)
-  return(has.query)
-}
+ggplot(profiles, aes(job, fill = sex)) + 
+  geom_bar(position = "dodge") + 
+  theme(axis.text.x=element_text(angle=45, hjust=1)) 
 ```
 
-Sifting through all of the essays, we see that women prefer using the word 'laugh' more than men do.
- 
+It appears that the 'computer / hardware / software' and 'science / tech / engineering' fields are, as per the stereotype, heavily male dominated. While we may recognize that something needs to be done about this issue, we will unashamedly use this in our model since it includes a large and polarized population. We'll group both of these categories into a new variable 'in.tech'.
+
 ```{r}
-profiles$has.laugh <- profile.has.query(data.frame = essays, query = "laugh")
-mosaicplot(table(profiles$sex, profiles$has.laugh), xlab="sex", ylab="Has 'laugh'?")
+profiles %<>% 
+  mutate("in.tech" = ifelse(profiles$job == "computer / hardware / software" | 
+                              profiles$job == "science / tech / engineering", 1, 0))
 ```
 
-```{r, echo=FALSE}
-# suppressPackageStartupMessages(library(qdap))
+### Body Type
 
-# Import list of 4000 most common words.
-# words <- suppressWarnings(readLines("mostcommonwords.csv")) 
+Looking at the graph below, we see that 'athletic' and 'curvy' body types could act as good predictors for males and females, respectively. 
 
-# This function goes through a list of common words, and finds the word that is most polarizing 
-# (percentage wise). It takes about 25 mintues to run, so I'll leave it commented out. 
-# But you can test for yourself that it works.
-
-#find.largest.gap <- function(data.frame, words){
-#  max <- 0
-#  keyword <- "Function Error"
-#  for(i in seq(1:4000)){
-#    has.word <- profile.has.query(data.frame = essays, query = words[i])
-#    tb <- table(profiles$sex, has.word)
-#    m <- tb[4]/(tb[4]+tb[2])
-#    f <- tb[3]/(tb[3]+tb[1])
-#    if(!is.na(abs(m-f)) && abs(m-f) > max){
-#      max <- abs(m-f)
-#      keyword <- words[i]
-#      print(keyword)
-#      }
-#    }
-#  return(keyword)
-#}
-
-# find.largest.gap(essays, words)
-
-# After first 4000 words: 'laugh' (789th most popular word on list) has the highest difference
-# percentage wise, between males and females
-
-# Search for the string "laugh" and make a mosaic plot.
-# profiles$has.laugh <- profile.has.query(data.frame = essays, query = "laugh")
-# mosaicplot(table(profiles$sex, profiles$has.laugh), xlab="sex", ylab="Has 'laugh'?")
+```{r}
+ggplot(profiles, aes(body_type, fill = sex)) + 
+  geom_bar(position = "dodge") + 
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  xlab("Body Type") +
+  ylab("Count") 
 ```
 
+Since these are the two most polarizing answers, we will create new variables for both. 
 
-### The Model
+```{r}
+profiles %<>% mutate("is.athletic" = ifelse(profiles$body_type=="athletic", 1, 0))
+profiles %<>% mutate("is.curvy" = ifelse(profiles$body_type=="curvy", 1, 0))
+```
+
+### Testing Model
 
 ```{r}
 # Split into halfs. 
@@ -294,32 +274,42 @@ profilesa <- slice(profiles, 1:(nrow(profiles)/2))
 profilesb <- slice(profiles, (nrow(profiles)/2 + 1):nrow(profiles)) 
 
 # Train with first half. 
-model <- glm(is.female ~ height + factor(has.laugh), family = binomial, data = profilesa)
+testmodel <- glm(is.female ~ height + factor(in.tech) +
+        factor(is.athletic) + factor(is.curvy), family = binomial, data = profilesa)
 
 # Make predictions and convert to usable value with inverse logit function.
-profilesb$predictions <- predict(model, profilesb)
+profilesb$predictions <- predict(testmodel, profilesb)
 profilesb$predictions <- 1/(1+exp(-profilesb$predictions))
 
+
 ggplot(profilesb, aes(jitter(is.female), predictions)) + 
-  geom_point(size = 3) + 
+  geom_point(size = 2) + 
   geom_abline(intercept = 0, size = 1) + 
   xlab("is.female") + 
   ylab("Prediction") + 
   ggtitle("Predicting A Female Profile")
 ```
 
+The results look pretty good... Again, we want the majority of points to lie on (0,0) or (1,1) because it means our model predicts female or male correctly.
+
+### The Actual Model
+
+```{r}
+model <- glm(is.female ~ height + factor(in.tech) +
+        factor(is.athletic) + factor(is.curvy), family = binomial, data = profiles)
+summary(model)
+
+b <- coefficients(model)
+b
+```
+
+Negative coefficients are nudging our model towards males (is.female = 0), where as positive values are pushing our predictions towards females (is.female = 1). We note that being curvy is the largest coefficient because if someone put that on their profile, we know it's a woman. Our second strongest predictor is 'in.tech' followed by 'is.athletic' and finally 'height'. However, an important note about height is we can use it for every profile, where as the others are hit or miss (either they have the term or they don't). 
+
 ## Question 3:
 
-*Keep a tone of where you would be sharing your findings with state public health officials:*
+*Keep a tone of where you would be sharing your findings with state public health officials. Perform exploratory data analyses: basic summaries, and conduct appropriate regressions along with interpretations for breast and lung cancer separaetly.*
 
-*Perform exploratory data analyses:* 
-
-*basic summaries*
-
-*conduct appropriate regressions along with interpretations for breast and lung cancer separaetly.*
-
-
-About the data set: consists of cancer counts of the National Cancer Institute's “Surveillance, Epidemiology, and End Results Program” (SEER) database of cancers. For the n=887 census tracts in the 13 counties in Western Washington (Clallam, Grays Harbor, Island, Jefferson, King, Kitsap, Mason, Pierce, San Juan, Skagit, Snohomish, Thurston, and Whatcom). Stratified by different demographic categories (age, sex, and race). Covers a period from 1996 through 2005. 
+About the data set: cancer counts of the National Cancer Institute's “Surveillance, Epidemiology, and End Results Program” (SEER) database of cancers. For the n = 887 census tracts in the 13 counties in Western Washington (Clallam, Grays Harbor, Island, Jefferson, King, Kitsap, Mason, Pierce, San Juan, Skagit, Snohomish, Thurston, and Whatcom). The data has been stratified by different demographic categories (age, sex, and race), and covers a period from 1996 through 2005. 
 
 ```{r}
 SEER <- read.csv("Space Time Surveillance Counts 11_05_09.txt", header=TRUE) %>% tbl_df()
@@ -375,9 +365,9 @@ census %<>% select(Total_Population, Males, Females, FIPS_code, White, Black, Am
 summary(SEER)
 ```
 
-Using the summary() command, we get some initial impressions of the data. We note that breast cancer is the most common form of cancer reported here, about one sixth of all cancers. Second most prevalent is lung cancer and then prostate cancer, comprising around 10 percent each. We also see that a large majority of cancer patients are over the age of 55, and that it seems to affect males and females at an equivalent rate. We also see that different races seem to be affected differently, or does this arise because of the different proportions of races accross western Washington?
+To begin, we'll get some initial impressions of the data. We note that breast cancer is the most common form of cancer reported here, about one sixth of all cancers. Second most prevalent is lung cancer and then prostate cancer, comprising around 10 percent each. We also see that a large majority of cancer patients are over the age of 55, and that it seems to affect males and females at an equivalent rate. We also see that different races seem to be affected differently, or does this arise because of the different proportions of races accross western Washington?
 
-Let's focus our analysis on two specific types of cancer: breast and lung, and see if we can find good predictor variables.
+Let's focus our analysis on two specific types of cancer: breast and lung. We will compare cancer counts in our SEER data set with census data in order to isolate conditions that might suggest high rates of cancer.
 
 ### Breast Cancer
 
@@ -393,13 +383,12 @@ breast <- left_join(breast, census, by = "FIPS_code")
 
 Let's find our base rate of breast cancer: the proportion of the population that has been diagnosed with breast cancer. 
 
-
 ```{r}
 rateb <- sum(breast$Total_Patients)/sum(breast$Total_Population)
 rateb
 ```
 
-Is household income correlated with higher rates of cancer?
+About 0.74%. Is household income correlated with higher rates of cancer?
 
 ```{r}
 ggplot(breast, aes(x = Median_Household_Income, y = Total_Patients/Total_Population*10000)) +
@@ -480,21 +469,22 @@ This is the clearest trend we've seen: a higher volume of older people correlate
 
 #### Model
 
-For our model, we should use a poisson distribution because we're dealing with rare events (a specialty of the poisson model). We've seen that age, median income, and proportion of poor people are all major players in the number of cancer cases, so let's include all three.
+For our model, we should use a poisson distribution because we're dealing with rare events (a specialty of the poisson model). We've seen that age and proportion of poor people are all major players in the number of cancer cases, so let's include all three.
 
 ```{r}
-bmodel <- glm(Total_Patients ~ (old) + Median_Household_Income + poor, family=poisson, 
+bmodel <- glm(Total_Patients ~ old + poor, family=poisson, 
               data=breast, offset=log(Total_Population))
 summary(bmodel)
 bb <- coefficients(bmodel)
 exp(bb)
+
 ```
 
 Since we are working with a poisson model, we need to keep in mind that we are interested in the *exponential* of the coefficients. This is because the coefficients are the log of the count (of breast cancer), as a function of the predictors (population of elderly, median income, percent of poor people). The exponential of the coefficient gives us the multiplicative increase in the count of breast cancer cases, holding all other predictors constant. 
 
-So, for every person over the age of 55, the likelyhood of cancer in the group of people increases by a factor 1.00018381. This isn't a large increase if it's just one extra person, but if we have 10000 people over the age of 55, the our counts increase by $1.00018381^{10000} = 6.3$. 
+So, for every person over the age of 55, the likelyhood of cancer in the group of people increases by a factor 1.000209604. This isn't a large increase if it's just one extra person, but if we have 1000 people over the age of 55, the our counts increase by $1.000209604^{1000} = 1.23$. This number, multiplied by the other predictors and the intercept, give us our predicted counts. 
 
-For every poor person (someone with a ratio of income to the defined poverty level income that is less than 2.00), the likely hood of breast cancer decreases by a factor of 0.24591725. 
+For every poor person (someone with a ratio of income to the defined poverty level income that is less than 2.00), the likely hood of breast cancer decreases by a factor of 0.403761474. 
 
 The intercept serves as the 'baseline,' though by itself, it doesn't really mean much.
 
@@ -516,7 +506,53 @@ ggplot(lung, aes(x = Median_Household_Income, y = Total_Patients/Total_Populatio
   scale_y_log10()
 ```
 
+We will begin again with the proportion of population that has lung cancer. 
+
 ```{r}
 ratel <- sum(lung$Total_Patients)/sum(lung$Total_Population)
 ratel
+```
+
+For lung cancer we see an even smaller percentage than for breast cancer, 0.58% (compared with 0.74%). Let's start again with our go-to: median income and poverty rates.
+
+```{r}
+ggplot(lung, aes(x = Median_Household_Income, y = Total_Patients/Total_Population*10000)) +
+  geom_point() + 
+  geom_smooth(method = "lm", na.rm = TRUE) + 
+  xlab("Median Household Income") + 
+  ylab("Lung Cancer per 10k Individuals") + 
+  scale_y_log10()
+```
+
+```{r}
+ggplot(lung, aes(x = poor, y = Total_Patients/Total_Population*10000)) +
+  geom_point(na.rm = TRUE) + 
+  geom_smooth(method = "lm", na.rm = TRUE) + 
+  xlab("Percent of Very Poor Individuals") + 
+  ylab("Lung Cancer per 10k Individuals") + 
+  scale_y_log10()
+```
+
+Both plots are indicating that greater income (and fewer poor people) corresponds to *lower* rates of cancer, the opposite trend we saw above. Does this make sense? We expect that people with lower paying jobs might be working in worse conditions (air pollution), or [that the wealthiest Americans are smoking fewer cigarettes than ever before, while the poorest have seen almost no change](http://www.pophealthmetrics.com/content/12/1/5). Both smoking and air pollution have been linked to lung cancer, so indeed the trend makes sense.
+
+We still get the same positive, linear trend when we look at the population over 55 compared with rates of cancer.
+
+```{r}
+ggplot(lung, aes(x = old, y = Total_Patients)) +
+  geom_point() +
+  xlab("Population of Adults Over 55") + 
+  ylab("Lung Cancer Counts") +
+  ggtitle("Lung Cancer vs. Age")
+```
+
+#### Model
+
+A poisson model will serve our needs well, though this time we will chose median income over poverty percentage as a predictor (since the trend is stronger for median income than poverty, unlike for breast cancer). The other predictor variable, is again, old age.
+
+```{r}
+lmodel <- glm(Total_Patients ~ old + Median_Household_Income, family=poisson, 
+              data=lung, offset=log(Total_Population))
+summary(lmodel)
+lb <- coefficients(lmodel)
+exp(lb)
 ```
