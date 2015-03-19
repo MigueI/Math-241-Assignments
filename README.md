@@ -7,3 +7,5 @@ working with.
 HW1: Visualization of Houston Airport Data
 
 HW2: Regression Models for OKCupid Profiles and Air Pollution Data
+
+HW3: Time Series: The Poolhall Jukebox, Bitcoin, and Diesel vs. Gasoline Cars.
