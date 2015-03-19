@@ -1,0 +1,500 @@
+---
+title: "MATH 214: Homework 02"
+author: "Miguel Conner"
+date: "Due Friday 2015/3/20 5:00pm on Moodle"
+output: html_document
+---
+
+```{r, echo=FALSE}
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(tidyr))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(Quandl))
+Quandl.auth("zUXjyRxxWJgECwzzPQ8Z")
+
+# Don't forget about the timezone (explained in problem 7).
+jukebox <- read.csv("jukebox.csv", header=TRUE)
+jukebox$date_time <- parse_date_time(jukebox$date_time, "%b %d %H%M%S %Y")
+jukebox$date_time <- with_tz(jukebox$date_time, "America/Los_Angeles")
+```
+
+## Question 1:
+
+*For each academic year between 2003-2004 thru 2008-2009, who were the top 10 artists played?  Define*
+
++ *the start of academic year as the first Tuesday in September*
++ *the end of the academic year as the last Monday in January plus 15 weeks plus 4 days (i.e. the Friday of that week)*
+
+*You can find these dates manually, or with the help of lubridate functions, or entirely using lubrdiate functions.  Display the results in easily digestible format.*  
+
+```{r, echo=FALSE}
+# Finds first day d in month m, in our given range:
+firstDayFinder <- function(d, m, range){
+  i = 1
+  days <- list()
+  while(i < length(six.years)){
+    day <- six.years[i]
+    if(wday(day) == d & month(day) == m){
+      days <- append(days, day)
+      i <- i + 300
+    }else{
+      i <- i + 1
+    }
+  }
+  return(days)
+}
+
+# Finds last day d in month m, in our given range:
+lastDayFinder <- function(d, m, range){
+  i = length(six.years)
+  days <- list()
+  while(0 < i){
+    day <- six.years[i]
+    if(wday(day) == d & month(day) == m){
+      days <- append(days, day)
+      i <- i - 300
+    }else{
+      i <- i - 1
+    }
+  }
+  return(days)
+}
+
+# Make date range.
+six.years <- seq(ymd(20030801), ymd(20090801), by = "day")
+```
+
+Let's find our start and end dates for the academic year (plus one hour for daylight savings).
+
+```{r}
+# Finds first Tuesdays in September.
+tuessep <- firstDayFinder(2, 9, six.years)
+with_tz(tuessep, "America/Los_Angeles")
+
+
+# Finds last Monday in January, then we add four days and fifteen weeks.  
+frijan <- lastDayFinder(1, 1, six.years) + ddays(4)  + dweeks(15) + dhours(1)
+with_tz(frijan, "America/Los_Angeles")
+```
+
+Now we need to make each academic year an interval. We'll do this by adding a column for each year.
+
+```{r, echo=FALSE}
+# Make seven new columns indicating the academic year
+jukebox$year03 <- jukebox$date_time %within% interval(tuessep[1], frijan[6])
+jukebox$year04 <- jukebox$date_time %within% interval(tuessep[2], frijan[5])
+jukebox$year05 <- jukebox$date_time %within% interval(tuessep[3], frijan[4])
+jukebox$year06 <- jukebox$date_time %within% interval(tuessep[4], frijan[3])
+jukebox$year07 <- jukebox$date_time %within% interval(tuessep[5], frijan[2])
+jukebox$year08 <- jukebox$date_time %within% interval(tuessep[6], frijan[1])
+
+# Combine above information into ONE column
+jukebox <- mutate(jukebox, in.acyear = ifelse(year03=="TRUE" | year04=="TRUE" | year05=="TRUE" | year06=="TRUE" | year07=="TRUE" | year08=="TRUE", 1, 0))
+```
+
+```{r}
+# Make list of tope 10 artists. 
+topten <- subset(jukebox, in.acyear == 1) %>% 
+  group_by(artist) %>%
+  summarize(count = n()) %>%
+  top_n(., 10,count) %>%
+  arrange()
+topten
+```
+
+```{r, echo=FALSE}
+# Order artists for plot.
+topten$artist <- factor(topten$artist, 
+                             levels = topten$artist[order(desc(topten$count))])
+
+ggplot(topten, aes(artist, count)) + 
+  geom_bar(stat = "identity") +
+  ylab("Songs Played") + 
+  xlab("Artist") + 
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  ggtitle("Total Song Plays by Artist\nDuring Academic Year")
+```
+
+We have a close finish, The Beatles just manage to edge OutKast for the most popular artist during the academic year. Everyone else competes at another level.
+
+## Question 2:
+
+*Plot a time series of the number of songs played each week.  What patterns do you observe?*  
+
+First we'll start by looking at each week separately over the 6 years. We'll color code the points by semester/break, just to get oriented, though since the schedule changes each year, these are approximations. 
+
+```{r, echo=FALSE, fig.width=12}
+# Make column with week number since beginning (1 to ~300).
+jukebox$week <- week(jukebox$date_time) + 
+  52*year(jukebox$date_time) - 52*year(jukebox$date_time[1])
+
+# Count songs per week.
+jukebox_week <- jukebox %>% 
+  group_by(week) %>%
+  summarize(week.count = n())
+
+# Sort weeks by season.
+jukebox_week <- mutate(jukebox_week,
+    Season = ifelse(week%%52 %in% seq(5,20), "spring semester",
+                    ifelse(week%%52 %in% seq(21,37), "summer break",
+                           ifelse(week%%52 %in% seq(38,51), "fall semester", "winter break")
+                    ))
+  )
+
+ggplot(jukebox_week, aes(week, week.count, col = as.factor(Season))) + 
+  geom_point(size = 3) 
+```
+
+Our plot shows that there does seem to be a trend in weekly song counts and the time of year (semester or break). We see that red and green clusters (college in session) are much higher than the purple and blue clusters. And while this isn't always the case, we need to keep in mind that exact dates change every year.
+
+We can also try looking at this data in another way: we'll combine all six years into one. For example, we'll sum up the total number of songs played in the first week of January each year. We'll do that for each of the 52 weeks in a year and we get total plays in every week.
+
+```{r, echo=FALSE}
+# Make column with week number in year (1 to 52). 
+jukebox$week <- week(jukebox$date_time)
+
+# Count songs per week.
+jukebox_week <- jukebox %>% 
+  group_by(week) %>%
+  summarize(week.count = n())
+
+# Sort weeks by season.
+jukebox_week <- mutate(jukebox_week,
+    Season = ifelse(week%%52 %in% seq(5,20), "spring semester",
+                    ifelse(week%%52 %in% seq(21,37), "summer break",
+                           ifelse(week%%52 %in% seq(38,51), "fall semester", "winter break")
+                    ))
+  )
+
+ggplot(jukebox_week, aes(week, week.count, col = as.factor(Season))) + 
+  geom_point(size = 3)
+```
+
+The trend is even more obvious now, we get a lot of music during the school year! It's interesting to note that in the spring semester, there's a big drop off that isn't visible in the fall semester. I guess people are more interested in Renn Fayre and getting theses done.
+
+## Question 3:
+
+*Compare Eminem, Talking Heads, and Girl Talk's month by month popularity over this time period.*
+
+```{r, echo=FALSE, fig.width=12}
+# Make column with month count, starting at 1.
+jukebox$month <- month(jukebox$date_time) + 12*year(jukebox$date_time) - 12*year(jukebox$date_time[1]) -11
+
+# Pick relevant artists and count songs by month
+juke_month <- jukebox %>% 
+  group_by(artist, month) %>%
+  summarize(count = n()) %>%
+  filter(artist == "Eminem" | artist == "Talking Heads" | artist == "Girl Talk")
+
+ggplot(juke_month, aes(month, count, fill = artist)) + 
+  geom_bar(stat = "identity", position = "dodge") + 
+  xlab("Month") + ylab("Song Count") + ggtitle("Songs by Month")
+```
+
+The first thing we see are the humps that occur due to students being on campus (school in session). But even if we focus only on the school year, we notice vastly different heights in certain peaks from year to year. How can we explain the differences we see in the each artists popularity over time?
+
+We'll start with Eminem, since he seems to be the most popular. Eminem, the best selling artist of the 2000s, begain this feat with the release of *The Marshall Mathers LP* in 2000, *The Eminem Show* in 2002, and *Encore* in 2004. The popularity of these three albums are reflected in our data with spikes in 2003 and then again in 2005. The decay in Eminem's popularity follows his descent into drug addiction and eventual haiatus; it wouldn't be until 2009 with the release of *Relapse*, that he would be back in the spotlight. 
+
+Next, we note that Girl Talk isn't anywhere to be found until around month 50 (late 2006), which coinsides with the release of his album *Night Ripper* (Pitchfork's 34th best album of 2006). So in a sense, Girl Talk's appearance on the poolhall jukebox symbolizes the artists appearance in the mainstream. 
+
+Finally, since the Talking Heads have been around for such a long time (they are considered a "Reed tradition"), we see a relativley constant number of Talking Heads songs over the six years. 
+
+## Question 4:
+
+*Did jukebox using Reedies' taste in songs change much during the period of the Sunday night blues?  Define this period to be between 4pm and 11pm on Sundays.*
+
+In seeing how taste could change, let's start by looking at the top ten songs. Because the Sunday night blues window is pretty small, we should compare the total percentage of songs played instead of the total counts.
+
+```{r, echo=FALSE, fig.width = 12, fig.height=8}
+# Pick out relevant sunday night blues data.
+jukebox <- jukebox %>% 
+  mutate(sunblues = ifelse(wday(date_time)==7 & 23 > hour(date_time) & hour(date_time) > 16,1,0))
+
+count(jukebox, sunblues == 1)
+
+# Find top songs during sunday blues
+topblues <- subset(jukebox, sunblues == 1) %>%
+  group_by(track) %>%
+  summarize(sun_percent = n()/12454) %>% 
+  arrange(sun_percent) %>%
+  top_n(15, sun_percent)
+
+# Find top songs NOT during sunday blues
+topnoblues <- subset(jukebox, sunblues == 0) %>%
+  group_by(track) %>%
+  summarize(nosun_percent = n()/218110)
+
+# Combine, format, then arrange data sets
+topblues <- left_join(topblues, topnoblues, by="track") %>% 
+  gather(., "sunblues", "percent", 2:3) 
+topblues$track <- factor(topblues$track, 
+                    levels = unique(topblues$track[order((topblues$percent & 
+                    topblues$sunblues == "sun_percent"))]))
+
+ggplot(topblues, aes(track, percent, fill=sunblues)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  ylab("Percentage of Times Played") + 
+  xlab("Track") + 
+  theme(axis.text.x=element_text(angle=65, hjust=1)) +
+  ggtitle("Song Choice Difference\nDuring Sunday Night Blues")
+```
+
+In red we have Sunday night blues period, and the blue represents the rest of the week (not including the blues window). There is definately a notable change in percentages in most songs. 
+
+```{r, echo=FALSE, fig.width = 12, fig.height=8}
+# Find top artists during sunday blues
+topbluea <- subset(jukebox, sunblues == 1) %>%
+  group_by(artist) %>%
+  summarize(sun_percent = n()/12454) %>% 
+  arrange(sun_percent) %>%
+  top_n(15, sun_percent)
+
+# Find top artists NOT during sunday blues
+topnobluea <- subset(jukebox, sunblues == 0) %>%
+  group_by(artist) %>%
+  summarize(nosun_percent = n()/218110)
+
+# Combine, format, then arrange data sets
+topbluea <- left_join(topbluea, topnobluea, by="artist") %>% 
+  gather(., "sunblues", "percent", 2:3) 
+topbluea$artist <- factor(topbluea$artist, 
+                    levels = unique(topbluea$artist[order((topbluea$percent & 
+                    topbluea$sunblues == "sun_percent"))]))
+
+ggplot(topbluea, aes(artist, percent, fill=sunblues)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  ylab("Percentage of Times Played") + 
+  xlab("Artist") + 
+  theme(axis.text.x=element_text(angle=65, hjust=1)) +
+  ggtitle("Artist Choice Difference\nDuring Sunday Night Blues")
+```
+
+The Beatles get even more popular on Sunday nights! We can see that overall the trend is pretty similar, but some of the big names are just shuffled around. 
+
+## Question 5:
+
+*We want to study the volatility of bitcoin prices.  Let our measure of volatility be the relative change from day-to-day in price.  For which periods since 2013/01/01 did we see the most volatility?*
+
+```{r, echo=FALSE, fig.width=10}
+# Load data
+bitcoin <- Quandl("BAVERAGE/USD") %>% tbl_df()
+bitcoin <- rename(bitcoin, Avg = `24h Average`, Total.Volume = `Total Volume`)
+bitcoin <- subset(bitcoin, year(Date) > 2012)
+
+# Find daily change in bitcoin prices
+for(i in seq(1, nrow(bitcoin))){
+  bitcoin$change[i] <- bitcoin$Avg[i+1] - bitcoin$Avg[i]
+  bitcoin$change[nrow(bitcoin)] <- 0
+}
+
+ggplot(bitcoin, aes(Date, change)) + 
+  geom_line() + 
+  xlab("Time") + 
+  ylab("Daily Change (USD)")
+```
+
+We see the most volatility (both positive and negative changes) for bitcoin prices during late 2013, November or December.
+
+## Question 6:
+
+*Compare the volatility of bitcoin prices with the volatility of the price of gold for the same time period.  What do you observe?*  
+
+Off the bat we notice that the price of gold doesn't change, at least officially, on the weekends. So we're going to have to remove weekend data for the bitcoin data set if we want to make a fair comparison. Also, since the two have presumably different values (an ounce of gold is more expensive than 1 bitcoin), we will divide the daily change by the mean value of the object. This way we "scale" the change value. 
+
+```{r, echo=FALSE, fig.width=10}
+# Load data
+gold <- Quandl("BUNDESBANK/BBK01_WT5511")
+bitcoin <- Quandl("BAVERAGE/USD") %>% tbl_df()
+bitcoin <- rename(bitcoin, Avg = `24h Average`)
+bitcoin <- left_join(bitcoin, gold, by="Date")
+bitcoin <- na.omit(bitcoin) 
+
+# Find daily change in gold prices
+mg <- mean(bitcoin$Value)
+
+for(i in seq(1, nrow(bitcoin))){
+  bitcoin$gold[i] <- ((bitcoin$Value[i+1] - bitcoin$Value[i])/mg)
+  bitcoin$gold[nrow(bitcoin)] <- 0
+}
+
+# Find daily change in bitcoin prices
+mb <- mean(bitcoin$Avg)
+
+for(i in seq(1, nrow(bitcoin))){
+  bitcoin$bit[i] <- ((bitcoin$Avg[i+1] - bitcoin$Avg[i])/mb)
+  bitcoin$bit[nrow(bitcoin)] <- 0
+}
+
+# Reformat data
+bitcoin <- gather(bitcoin, "object", "avg", `bit`, `gold`)
+
+ggplot(bitcoin, aes(Date, avg, col=object)) + 
+  geom_line() +
+  xlab("Time") +
+  ylab("Change in Value (USD)") +
+  ggtitle("Daily Change in Value for\n Bitcoin vs. Gold")
+```
+
+With the scaled changes, we note that bitcoin is much more volitile than gold, which is to be expected since gold is known for holding its value and bitcoin is known for doing the opposite. Otherwise, there don't really seem to be noticable trends or patterns that both are following.
+
+## Question 7:
+
+*Going back to the jukebox data, how do song plays change by time of day?*
+
+```{r, echo=FALSE, fig.width=12}
+jukebox <- jukebox %>%
+  mutate(hour = hour(date_time))
+
+hjuke <- jukebox %>%
+  group_by(hour) %>%
+  summarize(count = n())
+
+ggplot(hjuke, aes(hour, count)) + 
+  geom_bar(stat = "identity") +
+  xlab("Time of Day (Hour)") + 
+  ylab("Number of Songs") +
+  ggtitle("Total Songs Played by Hour")
+```
+
+The first time I made this plot, my results were completely backwards: the most songs were played at 7AM, and the fewest at 12 PM (noon). I realized that I had forgotten to specify the timezone!
+
+With the proper timezone specified, we get a much more reasonable plot (above): fewest songs during 5:00-7:59 AM, and most popular around 10:00-11:59 PM. 
+
+## Question 8:
+
+*Ever since some guy totaled my parked car a couple of weeks ago, I've been in the market for a replacement. I'm considering getting a car that uses diesel rather than gas, but is that economical? And if it is, when do I start seeing a return on my investment?*
+
+We'll get our gas and diesel data from Quandl.
+
+```{r, echo=FALSE, fig.width=12}
+diesel <- Quandl("BTS_MM/MOTOR_FUEL_DIESEL_PRICE")
+gas <- Quandl("BTS_MM/MOTOR_FUEL_GASOLINE_PRICE")
+
+# Combine data sets, use only price in dollars.
+fuel <- left_join(gas[1:2], diesel[1:2], by="Date")
+names(fuel)[2] <- paste("gas")
+names(fuel)[3] <- paste("diesel")
+
+fuel <- fuel %>% gather("fuel","price", 2:3)
+
+ggplot(fuel, aes(Date, price, col=fuel)) + 
+  geom_line() + 
+  xlab("Date") +
+  ylab("Price per Gallon ($)") +
+  ggtitle("Price of Gasoline vs. Diesel Over Time") +
+  geom_smooth(method="lm")
+```
+
+We see that the two are very closely related, but for the past couple of years diesel has been a little bit more expensive. To make the differences more clear, lets subract the price of gas from the price of diesel.
+
+```{r, echo=FALSE, fig.width=12}
+# Find difference.
+fuel <- fuel %>% 
+  spread(fuel, price) %>%
+  mutate("diff" = (diesel - gas))
+               
+ggplot(fuel, aes(Date, diff)) + 
+  geom_line() + 
+  xlab("Date") +
+  ylab("Price Difference\n per Gallon ($)") +
+  ggtitle("Price Difference in Gasoline vs. Diesel Over Time") +
+  geom_smooth(method="lm")
+```
+
+Note that a positive difference denotes that diesel costs more than gas, so for the most part we see a trend in the past 10 years that diesel has been a little more expensive than gas. But remember that diesel cars, which are more expenisive, also get better milage. 
+
+As an example, let's look at the 2015 VW Jetta SE (with Connectivity), which comes in either a gasoline ($22,325; 25/34 mpg) or a diesel ($24,075; 31/46 mpg) model.
+
+```{r, echo=FALSE}
+# Calculate a combined MPG (according to fuel economy.gov):
+g_mpg <- 25*0.55 + 34*0.45 
+d_mpg <- 31*0.55 + 46*0.45
+
+# Difference in Jetta car price (diesel - gas)
+cardiff <- 24075 - 22325
+
+# Number of miles I drive in a year and in a day (based on previous car).
+mi_year <- (40000-15000)/5
+mi_day <- mi_year/365.25
+```
+
+If in fact diesel cars do end up being cheaper in the long run, how long do I need to drive a diesel to make up for the initial price difference? We'll use a simplistic linear model to predict gas and diesel prices over the next couple of years. Then we'll find the cumulative sum of the cost of fuel over time. 
+
+```{r, echo=FALSE, fig.width=12}
+# Clean data for model.
+fuel <- fuel %>% mutate(Date = parse_date_time(Date, "ymd")) %>%
+  mutate(day = as.numeric(as.duration(interval(Date[1], Date)))/(60*60*24)) %>%
+  mutate(day = day - day[nrow(fuel)])
+
+# Make linear model.
+gmodel <- lm(gas ~ day, data = fuel)
+dmodel <- lm(diesel ~ day, data = fuel)
+g <- coefficients(gmodel)
+d <- coefficients(dmodel)
+# So gas increases by $0.00042 per day, and diesel by $0.00049 per day, 
+# and currently, the price is $3.47 per gallon of gas and $3.78 per gallon of diesel.
+
+# Make chart for next 10000 days. Each day, compute the total amount of
+# money spend on gas that day. This ends up being about $2 per day.
+cost <- data.frame("day" = seq(0,10000)) %>%
+  mutate(gas = g[2]*day + g[1]) %>%
+  mutate(diesel = d[2]*day + d[1]) %>%
+  mutate(gdaycost = gas/g_mpg*mi_day) %>%
+  mutate(ddaycost = gas/d_mpg*mi_day) %>%
+  mutate(Gas = 0) %>%
+  mutate(Diesel = 0) %>%
+  mutate(year = day/365.25)
+
+# Find total amount spent, rather than just cost per year.
+# Also factor in original cost difference.
+for(i in seq(1,10001)){
+  cost$Gas[i] <- sum(cost$gdaycost[1:i]) 
+  cost$Diesel[i] <- sum(cost$ddaycost[1:i]) + cardiff
+  }
+
+cost <- cost %>%
+  gather("Fuel", "total", 6:7)
+
+ggplot(cost, aes(year, total, col=Fuel)) + 
+  geom_point() +
+  xlab("Time (year)") + 
+  ylab("Cumulative Cost ($)") +
+  ggtitle("Cumulative Cost Comparison of\n Diesel and Gas Cars\n(Assuming 5,000 mi per Year)")
+```
+
+So remember, the y axis is the cumulative cost *over* the base gasoline model. So the diesel price starts off much more expensive, since the diesel engine is about $2000 more than the gasoline engine. Even despite the more expensive diesel prices, the better mileage ends up making the diesel car *cheaper* in the long run! How long are we talking? According to this model, 10 years. Hmmm... this doesn't look as good as we hoped. 
+
+We should remember that our linear model was based of off 15 years of gas prices, so it may not be the most accurate model ever. Also, remember that I used an estimate of 5,000 miles per year, which may not be representative of most people, or even representative of my own driving habits once I finish college and get a job. Adjusting this factor to match the average driving distance of a 20-30 year old male (15,000 mi), we see that the diesel model ends up being cheaper after about 3-5 years.
+
+```{r, echo=FALSE, fig.width=12}
+mi_day <- 15000/365.25
+
+cost <- data.frame("day" = seq(0,10000)) %>%
+  mutate(gas = g[2]*day + g[1]) %>%
+  mutate(diesel = d[2]*day + d[1]) %>%
+  mutate(gdaycost = gas/g_mpg*mi_day) %>%
+  mutate(ddaycost = gas/d_mpg*mi_day) %>%
+  mutate(Gas = 0) %>%
+  mutate(Diesel = 0) %>%
+  mutate(year = day/365.25)
+
+for(i in seq(1,10001)){
+  cost$Gas[i] <- sum(cost$gdaycost[1:i]) 
+  cost$Diesel[i] <- sum(cost$ddaycost[1:i]) + cardiff
+  }
+
+cost <- cost %>%
+  gather("Fuel", "total", 6:7)
+
+ggplot(cost, aes(year, total, col=Fuel)) + 
+  geom_point() +
+  xlab("Time (year)") + 
+  ylab("Cumulative Cost ($)") +
+  coord_cartesian(xlim = c(0, 10), ylim = c(0, 25000)) +
+  ggtitle("Cumulative Cost Comparison of\n Diesel and Gas Cars\n(Assuming 15,000 mi per Year)")
+```
+
+I was curious about the accuracy of my model, and found [this study](http://www.dieselforum.org/files/dmfile/20130311_cd_umtritcofinalreport_dd2017.pdf) by The University of Michigan Transportation Research Institute. They also found that the return on investment happened around 3 to 5 years for most cars, though they took into account a couple of other factors like depreciation value and repairs. 
+
+So I guess if I plan on driving like the typical 20 to 30 year old male, I'd better get a diesel!
