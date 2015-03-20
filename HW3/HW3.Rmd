@@ -2,11 +2,7 @@
 title: "HW3: Time Series - The Poolhall Jukebox, Bitcoin, and Diesel vs. Gasoline Cars."
 author: "Miguel Conner"
 output: html_document
----
-
-How much time spent on work: ~ 10 hours (Hard to say exactly, I'm a slow worker and the last question took me a long time.)
-
-What gave me trouble: working without the floor_date() function, redoing everything after I learned that function proved much easier. I had a bit of trouble with the last one, but that's my own fault, I kept mixing up units and multiplying instead of adding. Other than that, the first problem was probably the hardest. 
+--- 
 
 ```{r, echo=FALSE}
 suppressPackageStartupMessages(library(ggthemes))
