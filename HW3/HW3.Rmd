@@ -1,11 +1,15 @@
 ---
-title: "MATH 214: Homework 02"
+title: "HW3: Time Series - The Poolhall Jukebox, Bitcoin, and Diesel vs. Gasoline Cars."
 author: "Miguel Conner"
-date: "Due Friday 2015/3/20 5:00pm on Moodle"
 output: html_document
 ---
 
+How much time spent on work: ~ 10 hours (Hard to say exactly, I'm a slow worker and the last question took me a long time.)
+
+What gave me trouble: working without the floor_date() function, redoing everything after I learned that function proved much easier. I had a bit of trouble with the last one, but that's my own fault, I kept mixing up units and multiplying instead of adding. Other than that, the first problem was probably the hardest. 
+
 ```{r, echo=FALSE}
+suppressPackageStartupMessages(library(ggthemes))
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(tidyr))
 suppressPackageStartupMessages(library(ggplot2))
@@ -23,8 +27,8 @@ jukebox$date_time <- with_tz(jukebox$date_time, "America/Los_Angeles")
 
 *For each academic year between 2003-2004 thru 2008-2009, who were the top 10 artists played?  Define*
 
-+ *the start of academic year as the first Tuesday in September*
-+ *the end of the academic year as the last Monday in January plus 15 weeks plus 4 days (i.e. the Friday of that week)*
+* *the start of academic year as the first Tuesday in September*
+* *the end of the academic year as the last Monday in January plus 15 weeks plus 4 days (i.e. the Friday of that week)*
 
 *You can find these dates manually, or with the help of lubridate functions, or entirely using lubrdiate functions.  Display the results in easily digestible format.*  
 
@@ -65,7 +69,7 @@ lastDayFinder <- function(d, m, range){
 six.years <- seq(ymd(20030801), ymd(20090801), by = "day")
 ```
 
-Let's find our start and end dates for the academic year (plus one hour for daylight savings).
+Let's find our start and end dates for the academic year.
 
 ```{r}
 # Finds first Tuesdays in September.
@@ -74,7 +78,7 @@ with_tz(tuessep, "America/Los_Angeles")
 
 
 # Finds last Monday in January, then we add four days and fifteen weeks.  
-frijan <- lastDayFinder(1, 1, six.years) + ddays(4)  + dweeks(15) + dhours(1)
+frijan <- lastDayFinder(1, 1, six.years) + ddays(4)  + dweeks(15)
 with_tz(frijan, "America/Los_Angeles")
 ```
 
@@ -91,19 +95,16 @@ jukebox$year08 <- jukebox$date_time %within% interval(tuessep[6], frijan[1])
 
 # Combine above information into ONE column
 jukebox <- mutate(jukebox, in.acyear = ifelse(year03=="TRUE" | year04=="TRUE" | year05=="TRUE" | year06=="TRUE" | year07=="TRUE" | year08=="TRUE", 1, 0))
-```
 
-```{r}
 # Make list of tope 10 artists. 
 topten <- subset(jukebox, in.acyear == 1) %>% 
   group_by(artist) %>%
   summarize(count = n()) %>%
   top_n(., 10,count) %>%
   arrange()
-topten
 ```
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, fig.width=10}
 # Order artists for plot.
 topten$artist <- factor(topten$artist, 
                              levels = topten$artist[order(desc(topten$count))])
@@ -124,26 +125,32 @@ We have a close finish, The Beatles just manage to edge OutKast for the most pop
 
 First we'll start by looking at each week separately over the 6 years. We'll color code the points by semester/break, just to get oriented, though since the schedule changes each year, these are approximations. 
 
-```{r, echo=FALSE, fig.width=12}
-# Make column with week number since beginning (1 to ~300).
-jukebox$week <- week(jukebox$date_time) + 
-  52*year(jukebox$date_time) - 52*year(jukebox$date_time[1])
+```{r, echo=FALSE, fig.width=10}
+# Use super handy floor_date() to collapse by week.
+jukebox_week <- jukebox 
+jukebox_week$date_time <- floor_date(jukebox_week$date_time, "week")
 
 # Count songs per week.
-jukebox_week <- jukebox %>% 
-  group_by(week) %>%
+jukebox_week <- jukebox_week %>% 
+  group_by(date_time) %>%
   summarize(week.count = n())
 
 # Sort weeks by season.
 jukebox_week <- mutate(jukebox_week,
-    Season = ifelse(week%%52 %in% seq(5,20), "spring semester",
-                    ifelse(week%%52 %in% seq(21,37), "summer break",
-                           ifelse(week%%52 %in% seq(38,51), "fall semester", "winter break")
-                    ))
+    Season = ifelse(week(jukebox_week$date_time) %in% seq(5,20), "Spring Semester",
+                    ifelse(week(jukebox_week$date_time) %in% seq(21,37), "Summer Break",
+                           ifelse(week(jukebox_week$date_time) %in% seq(38,51), 
+                                  "Fall Semester", "Winter Break")
+                    )
+              )
   )
 
-ggplot(jukebox_week, aes(week, week.count, col = as.factor(Season))) + 
-  geom_point(size = 3) 
+ggplot(jukebox_week, aes(date_time, week.count, col = as.factor(Season))) + 
+  xlab("Time of Year") +
+  ylab("Song Count") + 
+  scale_color_discrete("Season") +
+  geom_point(size = 3) +
+  geom_smooth(method="lm", fill=NA)
 ```
 
 Our plot shows that there does seem to be a trend in weekly song counts and the time of year (semester or break). We see that red and green clusters (college in session) are much higher than the purple and blue clusters. And while this isn't always the case, we need to keep in mind that exact dates change every year.
@@ -161,14 +168,17 @@ jukebox_week <- jukebox %>%
 
 # Sort weeks by season.
 jukebox_week <- mutate(jukebox_week,
-    Season = ifelse(week%%52 %in% seq(5,20), "spring semester",
-                    ifelse(week%%52 %in% seq(21,37), "summer break",
-                           ifelse(week%%52 %in% seq(38,51), "fall semester", "winter break")
+    Season = ifelse(week%%52 %in% seq(5,20), "Spring Semester",
+                    ifelse(week%%52 %in% seq(21,37), "Summer Break",
+                           ifelse(week%%52 %in% seq(38,51), "Fall Semester", "Winter Break")
                     ))
   )
 
 ggplot(jukebox_week, aes(week, week.count, col = as.factor(Season))) + 
-  geom_point(size = 3)
+  xlab("Week Number") +
+  ylab("Song Count") + 
+  scale_color_discrete("Season") +
+  geom_point(size = 3) 
 ```
 
 The trend is even more obvious now, we get a lot of music during the school year! It's interesting to note that in the spring semester, there's a big drop off that isn't visible in the fall semester. I guess people are more interested in Renn Fayre and getting theses done.
@@ -177,19 +187,23 @@ The trend is even more obvious now, we get a lot of music during the school year
 
 *Compare Eminem, Talking Heads, and Girl Talk's month by month popularity over this time period.*
 
-```{r, echo=FALSE, fig.width=12}
-# Make column with month count, starting at 1.
-jukebox$month <- month(jukebox$date_time) + 12*year(jukebox$date_time) - 12*year(jukebox$date_time[1]) -11
+```{r, echo=FALSE, fig.width=10}
+# Use super handy floor_date() to collapse by month.
+jukebox_month <- jukebox 
+jukebox_month$date_time <- floor_date(jukebox_month$date_time, "month")
 
-# Pick relevant artists and count songs by month
-juke_month <- jukebox %>% 
-  group_by(artist, month) %>%
-  summarize(count = n()) %>%
+# Pick relevant artists and count songs by month.
+jukebox_month <- jukebox_month %>% 
+  group_by(artist, date_time) %>%
+  summarize(month.count = n()) %>%
   filter(artist == "Eminem" | artist == "Talking Heads" | artist == "Girl Talk")
 
-ggplot(juke_month, aes(month, count, fill = artist)) + 
+ggplot(jukebox_month, aes(date_time, month.count, fill = artist)) + 
   geom_bar(stat = "identity", position = "dodge") + 
-  xlab("Month") + ylab("Song Count") + ggtitle("Songs by Month")
+  scale_fill_discrete("Artist") +
+  xlab("Month") + 
+  ylab("Song Count") + 
+  ggtitle("Songs by Month")
 ```
 
 The first thing we see are the humps that occur due to students being on campus (school in session). But even if we focus only on the school year, we notice vastly different heights in certain peaks from year to year. How can we explain the differences we see in the each artists popularity over time?
@@ -216,14 +230,14 @@ count(jukebox, sunblues == 1)
 # Find top songs during sunday blues
 topblues <- subset(jukebox, sunblues == 1) %>%
   group_by(track) %>%
-  summarize(sun_percent = n()/12454) %>% 
-  arrange(sun_percent) %>%
-  top_n(15, sun_percent)
+  summarize(Sunday_Blues = n()/12454) %>% 
+  arrange(Sunday_Blues) %>%
+  top_n(15, Sunday_Blues)
 
 # Find top songs NOT during sunday blues
 topnoblues <- subset(jukebox, sunblues == 0) %>%
   group_by(track) %>%
-  summarize(nosun_percent = n()/218110)
+  summarize(Other = n()/218110)
 
 # Combine, format, then arrange data sets
 topblues <- left_join(topblues, topnoblues, by="track") %>% 
@@ -232,28 +246,30 @@ topblues$track <- factor(topblues$track,
                     levels = unique(topblues$track[order((topblues$percent & 
                     topblues$sunblues == "sun_percent"))]))
 
+
 ggplot(topblues, aes(track, percent, fill=sunblues)) + 
   geom_bar(stat = "identity", position = "dodge") +
   ylab("Percentage of Times Played") + 
   xlab("Track") + 
+  scale_fill_manual("Group",values = c('steelblue4', 'indianred1')) +
   theme(axis.text.x=element_text(angle=65, hjust=1)) +
   ggtitle("Song Choice Difference\nDuring Sunday Night Blues")
 ```
 
-In red we have Sunday night blues period, and the blue represents the rest of the week (not including the blues window). There is definately a notable change in percentages in most songs. 
+In red we have Sunday night blues period, and the blue represents the rest of the week (not including the blues window). There is definately a notable change in percentages in most songs, however, it doesn't really seem like the changes have anything to do with the mood of the song. In other words, we don't see a large increase in "blue-er" songs.
 
 ```{r, echo=FALSE, fig.width = 12, fig.height=8}
 # Find top artists during sunday blues
 topbluea <- subset(jukebox, sunblues == 1) %>%
   group_by(artist) %>%
-  summarize(sun_percent = n()/12454) %>% 
-  arrange(sun_percent) %>%
-  top_n(15, sun_percent)
+  summarize(Sunday_Blues = n()/12454) %>% 
+  arrange(Sunday_Blues) %>%
+  top_n(15, Sunday_Blues)
 
 # Find top artists NOT during sunday blues
 topnobluea <- subset(jukebox, sunblues == 0) %>%
   group_by(artist) %>%
-  summarize(nosun_percent = n()/218110)
+  summarize(Other = n()/218110)
 
 # Combine, format, then arrange data sets
 topbluea <- left_join(topbluea, topnobluea, by="artist") %>% 
@@ -266,6 +282,7 @@ ggplot(topbluea, aes(artist, percent, fill=sunblues)) +
   geom_bar(stat = "identity", position = "dodge") +
   ylab("Percentage of Times Played") + 
   xlab("Artist") + 
+  scale_fill_manual("Group",values = c('steelblue4', 'indianred1')) +
   theme(axis.text.x=element_text(angle=65, hjust=1)) +
   ggtitle("Artist Choice Difference\nDuring Sunday Night Blues")
 ```
@@ -291,6 +308,7 @@ for(i in seq(1, nrow(bitcoin))){
 ggplot(bitcoin, aes(Date, change)) + 
   geom_line() + 
   xlab("Time") + 
+  theme_economist() +
   ylab("Daily Change (USD)")
 ```
 
@@ -330,9 +348,11 @@ for(i in seq(1, nrow(bitcoin))){
 bitcoin <- gather(bitcoin, "object", "avg", `bit`, `gold`)
 
 ggplot(bitcoin, aes(Date, avg, col=object)) + 
-  geom_line() +
+  geom_line(size=1.2) +
   xlab("Time") +
-  ylab("Change in Value (USD)") +
+  theme_economist() +
+  ylab("Change in Value") +
+  scale_color_manual("Object", values = c('bit' = 'black', 'gold'='darkgoldenrod3')) +
   ggtitle("Daily Change in Value for\n Bitcoin vs. Gold")
 ```
 
@@ -342,7 +362,7 @@ With the scaled changes, we note that bitcoin is much more volitile than gold, w
 
 *Going back to the jukebox data, how do song plays change by time of day?*
 
-```{r, echo=FALSE, fig.width=12}
+```{r, echo=FALSE, fig.width=10}
 jukebox <- jukebox %>%
   mutate(hour = hour(date_time))
 
@@ -367,7 +387,7 @@ With the proper timezone specified, we get a much more reasonable plot (above): 
 
 We'll get our gas and diesel data from Quandl.
 
-```{r, echo=FALSE, fig.width=12}
+```{r, echo=FALSE, fig.width=10}
 diesel <- Quandl("BTS_MM/MOTOR_FUEL_DIESEL_PRICE")
 gas <- Quandl("BTS_MM/MOTOR_FUEL_GASOLINE_PRICE")
 
@@ -381,14 +401,15 @@ fuel <- fuel %>% gather("fuel","price", 2:3)
 ggplot(fuel, aes(Date, price, col=fuel)) + 
   geom_line() + 
   xlab("Date") +
-  ylab("Price per Gallon ($)") +
+  ylab("Price per Gallon ($)") +  
+  scale_color_discrete("Fuel") + 
   ggtitle("Price of Gasoline vs. Diesel Over Time") +
   geom_smooth(method="lm")
 ```
 
 We see that the two are very closely related, but for the past couple of years diesel has been a little bit more expensive. To make the differences more clear, lets subract the price of gas from the price of diesel.
 
-```{r, echo=FALSE, fig.width=12}
+```{r, echo=FALSE, fig.width=10}
 # Find difference.
 fuel <- fuel %>% 
   spread(fuel, price) %>%
@@ -421,7 +442,7 @@ mi_day <- mi_year/365.25
 
 If in fact diesel cars do end up being cheaper in the long run, how long do I need to drive a diesel to make up for the initial price difference? We'll use a simplistic linear model to predict gas and diesel prices over the next couple of years. Then we'll find the cumulative sum of the cost of fuel over time. 
 
-```{r, echo=FALSE, fig.width=12}
+```{r, echo=FALSE, fig.width=10}
 # Clean data for model.
 fuel <- fuel %>% mutate(Date = parse_date_time(Date, "ymd")) %>%
   mutate(day = as.numeric(as.duration(interval(Date[1], Date)))/(60*60*24)) %>%
@@ -467,7 +488,7 @@ So remember, the y axis is the cumulative cost *over* the base gasoline model. S
 
 We should remember that our linear model was based of off 15 years of gas prices, so it may not be the most accurate model ever. Also, remember that I used an estimate of 5,000 miles per year, which may not be representative of most people, or even representative of my own driving habits once I finish college and get a job. Adjusting this factor to match the average driving distance of a 20-30 year old male (15,000 mi), we see that the diesel model ends up being cheaper after about 3-5 years.
 
-```{r, echo=FALSE, fig.width=12}
+```{r, echo=FALSE, fig.width=10}
 mi_day <- 15000/365.25
 
 cost <- data.frame("day" = seq(0,10000)) %>%
