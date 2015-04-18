@@ -1,0 +1,349 @@
+---
+title: "MATH 241: Homework 04"
+author: "Miguel Conner"
+date: "Due Friday 2015/4/17 5:00pm on Moodle"
+output: html_document
+---
+
+Please indicate:
+
+* Approximately how much time you spent on this homework: 9 hours + 1-3:30
+* What, if anything, gave you an exceeding amount of trouble?  By exceeding I mean above and beyond run-of-the-mill difficulties when learning new things.   
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(rgdal))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(rvest))
+suppressPackageStartupMessages(library(tidyr))
+suppressPackageStartupMessages(library(maps))
+suppressPackageStartupMessages(library(maptools))
+suppressPackageStartupMessages(library(ggmap))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(magrittr))
+suppressWarnings(invisible(gpclibPermit()))
+```
+
+
+## Question 1:
+
+Consider the breast cancer from HW02.  Plot, using the `ww` shapefiles provided in Lecture 20, three maps:
+
+* A map of overall breast cancer incidence rate for each census tract:  $\frac{y_i}{N_i}$ where for each census tract $i=1,\ldots,n$
+    + $y_i$ is the total number of cases
+    + $N_i$ is the total number of people
+* A map of the median income **quintiles**.  i.e. your map should be a [chrolopleth map](http://2.bp.blogspot.com/_Vod56KuZXlk/S9IdL4yW14I/AAAAAAAAAFc/jHIE6fPuQvM/s1600/standardized+c+map.PNG) involving only 5 colors.
+* A map of that gives a sense of census tracts with high and low breast cancer incidence rates *while taking income into account*.  The approach I'm thinking of is rather simple mathematically, but requires some thought to come up with.  
+
+Notes: 
+
+* You should use the solutions from HW02.
+* Do not import the shapefiles using the code from Lecture 20, but rather the `readOGR()` function from Lectures 23 and 25.  
+
+### Breast Cancer Incidence Rate
+```{r, echo=FALSE}
+# Import data (FROM HW2).
+SEER <- read.csv("Space Time Surveillance Counts 11_05_09.txt", header=TRUE) %>% tbl_df()
+
+# Rename column.
+names(SEER)[1] <- "FIPS"
+```
+
+```{r,echo=FALSE}
+cancer.data <- SEER %>%
+  filter(SiteRecodeTxt == "Breast ") %>%
+  group_by(FIPS) %>%
+  summarize(cancer_counts = n())
+```
+
+```{r, echo=FALSE}
+# Convert shapefile into "Spatial Polygons" AKA "sp" object
+WW <- readShapeSpatial("ww")
+
+WW.data <- WW@data %>% tbl_df()
+
+suppressWarnings(
+  WW.map <- fortify(WW, region="FIPS") %>% 
+    tbl_df() %>%
+    left_join(WW.data, by=c("id" = "FIPS"))
+)
+
+WW.map$id <- as.numeric(WW.map$id)
+
+WW.map <- left_join(WW.map, cancer.data, by = c("id" = "FIPS")) %>%
+  mutate(cancer_rate = cancer_counts/POP2000)
+
+ggplot(data=WW.map, aes(x=long, y=lat, group=group, fill = cancer_rate)) +
+  geom_polygon() +
+  geom_path(color="black", size=0.5) +
+  xlab("longitude") + ylab("latitude")
+```
+
+It's hard to see exactly what's going on in the smaller census tracts, so let's try zooming in. 
+
+```{r,echo=FALSE, fig.with = 1.5, fig.height = 6}
+ggplot(data=WW.map, aes(x=long, y=lat, group=group, fill = cancer_rate)) +
+  geom_polygon() +
+  geom_path(color="black", size=0.5) +
+  xlab("longitude") + ylab("latitude") +
+  coord_cartesian(xlim = c(-122.75, -122), ylim = c(47.0, 48.0))
+```
+
+Both plots indicate that the incident rate of breast cancer is somewhere betweeen 0.5% to 2.5%, though we do see one outlier with a rate of about 4%. Additionally, there doesn't seem to be any clear pattern between rural areas and the more metropolitan areas around Seattle and Tacoma.
+
+### Median Income
+```{r,echo=FALSE}
+census <- read.csv("census2000.csv", header=TRUE) %>% tbl_df()
+names(census)[names(census)=="Geo_FIPS"] <- "FIPS_code"
+names(census)[names(census)=="SE_T093_001"] <- "Median_Household_Income"
+census$income_quantile <- 0
+
+for(i in 1:5){
+  u <- quantile(census$Median_Household_Income, (i/5))[[1]]
+  l <- quantile(census$Median_Household_Income, ((i-1)/5))[[1]]
+  for(j in 1:nrow(census)){ 
+    if(l <= census$Median_Household_Income[j] && u >= census$Median_Household_Income[j]){
+      census$income_quantile[j] <- i   
+      }
+    }
+  }
+
+WW.map <- left_join(WW.map, census, by = c("id" = "FIPS_code"))
+
+ggplot(data=WW.map, aes(x=long, y=lat, group=group, fill = factor(income_quantile))) +
+  geom_polygon() +
+  geom_path(color="black", size=0.5) +
+  xlab("Longitude") + ylab("Latitude") + 
+  scale_fill_brewer(palette="YlOrRd", 
+                    name="Median Income ($)",
+                    breaks=c(1,2,3,4,5),
+                    labels=c("0 to 35,109","35,110 to  42,160",
+                             "42,161 to 49,990","49,991 to 60,245","60,246 to 133,756")) 
+
+```
+
+And another quick zoom to make sure we don't lose the little guys.
+
+```{r,echo=FALSE, fig.with = 1.5, fig.height = 6}
+ggplot(data=WW.map, aes(x=long, y=lat, group=group, fill = factor(income_quantile))) +
+  geom_polygon() +
+  geom_path(color="black", size=0.5) +
+  xlab("Longitude") + ylab("Latitude") + 
+  scale_fill_brewer(palette="YlOrRd", 
+                    name="Median Income ($)",
+                    breaks=c(1,2,3,4,5),
+                    labels=c("0 to 35,109","35,110 to  42,160",
+                             "42,161 to 49,990","49,991 to 60,245","60,246 to 133,756")) + 
+  coord_cartesian(xlim = c(-122.75, -122), ylim = c(47.0, 48.0))
+```
+
+Interestingly, the image shows that most of the wealthiest areas are just outside of the cities, not actually in the cities themselves.
+
+### Breast Cancer and Median Income
+
+We will make our metric the product of the incident cancer rate and the median household income. The higher values will be census tracts in which either the cancer rate is higher than usual, and/or the median income is larger than usual. 
+
+```{r, echo=FALSE}
+WW.map %<>% mutate(income_cancer = Median_Household_Income*cancer_rate)
+
+ggplot(data=WW.map, aes(x=long, y=lat, group=group, fill = income_cancer)) +
+  geom_polygon() +
+  geom_path(color="black", size=0.25) +
+  xlab("Longitude") + ylab("Latitude")
+```
+
+```{r, echo=FALSE, fig.with = 1.5, fig.height = 6}
+ggplot(data=WW.map, aes(x=long, y=lat, group=group, fill = income_cancer)) +
+  geom_polygon() +
+  geom_path(color="black", size=0.5) +
+  xlab("Longitude") + ylab("Latitude") + 
+  coord_cartesian(xlim = c(-122.75, -122), ylim = c(47.0, 48.0)) 
+```
+
+Our image shows brighter spots in the wealthier areas, suggesting that wealthier communities tend to have higher rates of breast cancer. 
+
+It's also worth taking a look at a plot of the two variables
+```{r, echo=FALSE}
+census <- left_join(census, cancer.data, by = c("FIPS_code" = "FIPS"))
+names(census)[names(census)=="SE_T001_001"] <- "Total_Population"
+census %<>% mutate(incidence = (cancer_counts/Total_Population))
+
+suppressWarnings(
+ggplot(census, aes(x = factor(income_quantile), 
+                   y = incidence,
+                   col = factor(income_quantile))) + 
+  geom_boxplot(size = 1.5, outlier.size = 2) +
+  xlab("Income Quantile") + ylab("Incident Breast Cancer Rate") + 
+  scale_color_brewer(palette="YlOrRd", 
+                    name="Median Income ($)",
+                    breaks=c(1,2,3,4,5),
+                    labels=c("0 to 35,109","35,110 to  42,160",
+                             "42,161 to 49,990","49,991 to 60,245","60,246 to 133,756")) +
+  ggtitle("Breast Cancer Rate by Income Quantile")
+)
+```
+
+There does appear to be a slightly increasing trend, indicating that as the median household income increases, so does the incident rate of breast cancer. We can find the difference using an ANOVA test. We can set up a quick hypothesis test:
+
+$H_0$: There is no increase between cancer rate and income quantiles.
+
+$H_A$: There is an increase between cancer rate and income quantiles.
+
+```{r}
+trend <- aov(incidence ~ factor(income_quantile), data = census)
+summary(trend)
+```
+
+With a p-val less than 0.05, we reject $H_0$ in favor of $H_A$. This means our data suggests that there is a statistically significant difference for the cancer rate, just a few fractions of a percent, between each income quantile.
+
+## Question 2:
+
+Download the results of the 2000 election from the [School of Public Affairs at American University in DC](http://www.american.edu/spa/ccps/Data-Sets.cfm) and create two maps involving only the lower 48 states that show:
+
+* The proportion of people who voted for Bush at a **state** level
+* The proportion of people who voted for Bush at a **census tract** level
+
+where
+
+* Census tracts are filled with red when they tend to favor Bush
+* Census tracts are filled with blue when they tend to not favor Bush
+* Census tracts are filled with white when they tend to be split
+
+Then answer the following questions:
+
+1. Comment on the biggest differences when changing from "census tract" resolution to "state" resolution.
+2. Comment on how the maps align with the idea of the [Nine Nations of North America](http://en.wikipedia.org/wiki/The_Nine_Nations_of_North_America)
+3. Which states exhibit the greatest **within state heterogeneity** in voting?  Come up with a mathematical justification.
+
+
+Notes:
+
+* Hint:  `scale_fill_gradient2(name="", low="blue", high="red", mid="purple")` for the appropriate "mid" point.  See the ggplot2 webpage for this command for inspiration.
+* I believe the county map is from 2010, whereas the election data is from 2000, as such certain census tracts will not match up.  The number is not that large.
+* [Counties in Virginia](http://en.wikipedia.org/wiki/List_of_counties_in_Virginia)
+* The following code should help:
+
+```{r,echo = FALSE}
+# This function eliminates all non-alphanumeric characters and spaces and 
+# converts all text to lower case.
+clean.text <- function(text){
+  text <- gsub("[^[:alnum:]]", "", text)
+  text <- gsub(" ", "", text)
+  text <- tolower(text)
+  return(text)
+}
+
+# State and county map of US in 2010
+US.state <- map_data("state") %>% tbl_df()
+US.county <- map_data("county") %>% tbl_df()
+US.county$subregion <- clean.text(US.county$subregion)
+```
+
+### State
+
+```{r,echo=FALSE}
+# Clean data.
+election <- read.csv("COUNTY.csv", header=TRUE) %>% tbl_df()
+election$COUNTY <- clean.text(election$COUNTY) 
+election$STATE <- clean.text(election$STATE) 
+election$BUSH <- as.numeric(election$BUSH)
+election$GORE <- as.numeric(election$GORE)
+election$NADER <- as.numeric(election$NADER)
+election$BUCHANAN <- as.numeric(election$BUCHANAN)
+election$BROWNE <- as.numeric(election$BROWNE)
+election$PHILLIPS <- as.numeric(election$PHILLIPS)
+election$WRITEINS <- as.numeric(election$WRITEINS)
+election$HAGELIN <- as.numeric(election$HAGELIN)
+election$MCREYNOLDS <- as.numeric(election$MCREYNOLDS)
+election$HARRIS <- as.numeric(election$HARRIS)
+election$DODGE <- as.numeric(election$DODGE)
+election$NOTA <- as.numeric(election$NOTA)
+election$MOOREHEAD <- as.numeric(election$MOOREHEAD)
+election$BROWN <- as.numeric(election$BROWN)
+election$VENSON <- as.numeric(election$VENSON)
+election$YOUNGKEIT <- as.numeric(election$YOUNGKEIT)
+election$LANE <- as.numeric(election$LANE)
+
+state.map <- election %>%   
+  mutate(OTHER = (BUCHANAN + BROWNE + PHILLIPS + WRITEINS + HAGELIN + MCREYNOLDS + HARRIS + DODGE + NOTA + MOOREHEAD + BROWN + VENSON + YOUNGKEIT + LANE)) %>%
+  group_by(STATE) %>% 
+  summarise(BUSH = sum(BUSH), 
+            GORE = sum(GORE), 
+            OTHER = sum(OTHER), na.rm = TRUE)
+
+state.map <- left_join(US.state, state.map, by = c("region"="STATE"))
+
+ggplot(data=state.map, aes(x=long, y=lat, group=group, fill = (BUSH/(BUSH + GORE)))) +
+  geom_polygon() +
+  geom_path(color="black", size=0.1) +
+  xlab("Longitude") + ylab("Latitude") +
+  coord_map() + 
+  scale_fill_gradient2(name="", low="dodgerblue4", high="firebrick3", mid="white",
+                       midpoint = 0.5,
+                       na.value = "transparent")
+```
+
+### County
+
+```{r,echo=FALSE}
+county.map <- left_join(US.county, election, by = c("subregion"="COUNTY"))
+
+ggplot(data=county.map, aes(x=long, y=lat, group=group, fill = BUSH/(BUSH+GORE))) +
+  geom_polygon() +
+  geom_path(color="black", size=0.01) +
+  coord_map() + 
+  xlab("Longitude") + ylab("Latitude") +
+  scale_fill_gradient2(name="", low="dodgerblue4", high="firebrick3", mid="white",
+                       midpoint = 0.5,
+                       na.value = "transparent")
+```
+
+Now with the maps on the table, we can take a stab at answering some of the questions.
+
+### State vs. County Resolution
+
+### Nine Nations of North America
+
+### Greatest Within State Heterogeneity
+
+We get a sense for the most conflicted states by looking at the standard deviation the voting percentage in each county.
+
+```{r, echo=FALSE}
+# Find the top ten states with the highest standard deviation.
+conflicted <- election %>%
+  mutate(RedvsBlue = BUSH/(BUSH+GORE)) %>%
+  group_by(STATE) %>%
+  summarize(std_dev = sd(RedvsBlue)) %>%
+  arrange(desc(std_dev)) %>%
+  slice(1:10)
+
+# Plot.
+ggplot(conflicted, aes(STATE,std_dev)) + 
+  geom_bar(stat = "identity") +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  xlab("State") + ylab("Standard Deviation") +
+  ggtitle("Standard Deviation in County Election Results")
+```
+
+The plot above shows the ten states with the highest standard deviation in percentage having voted republican vs. democrat. In other words, the plot shows the states that seem to be most 'divided' in terms of their political beliefs. We see that many of these states have both
+
+(a) at least one very big city and
+
+(b) huge regions that are mostly unpopulated. 
+
+If we look at the states on the above map, we confirm that states like New Mexico, Oregon, Texas, California, Alabama, etc. all seem to share these features.  
+
+## Question 3:
+
+The Chief of the Portland Police is tired of reading through pages of crime reports and wants an interactive tool to visualize where different crimes occured during the years 2004 and 2013.  Obtain crime data for Portland for years 2004 through 2013 from the [CivicApps](http://www.civicapps.org/datasets) site, create (in a separate `.Rmd` file) an appropriate Shiny app, and publish it online.  Post the hyperlink [here](http://canadiens.nhl.com/?navid=nav-teamnav-mtl).  
+
+Your Shiny app should take in two inputs.  Think carefully which is the best way to have users input these:
+
+* A way to select the year:  2004, 2005, ..., 2013, or all
+* Select the crime
+
+Using this app, answer the following questions:
+
+* What crimes appear to have unequal spatial enforcement?
+* What crimes are the most related to each other?
+* If the Portland Police receives a large grant from the state government to fight crime, what do you think it should do?
