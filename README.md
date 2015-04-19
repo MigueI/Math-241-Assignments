@@ -9,3 +9,5 @@ HW1: Visualization of Houston Airport Data
 HW2: Regression Models for OKCupid Profiles and Air Pollution Data
 
 HW3: Time Series - The Poolhall Jukebox, Bitcoin, and Diesel vs. Gasoline Cars.
+
+HW4: Maps - Breast Cancer in Western Washington and the 2000 Presidential Election Results. Bonus: [Shiny App Showing Crimes in Portland, OR from 2006 to 2013.](https://miguelconner4.shinyapps.io/PDX_Crime/PDX_Crime.Rmd)
