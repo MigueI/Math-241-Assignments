@@ -5,11 +5,6 @@ date: "Due Friday 2015/4/17 5:00pm on Moodle"
 output: html_document
 ---
 
-Please indicate:
-
-* Approximately how much time you spent on this homework: 9 hours + 1-3:30
-* What, if anything, gave you an exceeding amount of trouble?  By exceeding I mean above and beyond run-of-the-mill difficulties when learning new things.   
-
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(rgdal))
@@ -27,29 +22,20 @@ suppressWarnings(invisible(gpclibPermit()))
 
 ## Question 1:
 
-Consider the breast cancer from HW02.  Plot, using the `ww` shapefiles provided in Lecture 20, three maps:
+Let's start by looking at breast cancer data, by census tract, in western Washington state. We'll use the data to make three plots:
 
 * A map of overall breast cancer incidence rate for each census tract:  $\frac{y_i}{N_i}$ where for each census tract $i=1,\ldots,n$
     + $y_i$ is the total number of cases
     + $N_i$ is the total number of people
-* A map of the median income **quintiles**.  i.e. your map should be a [chrolopleth map](http://2.bp.blogspot.com/_Vod56KuZXlk/S9IdL4yW14I/AAAAAAAAAFc/jHIE6fPuQvM/s1600/standardized+c+map.PNG) involving only 5 colors.
-* A map of that gives a sense of census tracts with high and low breast cancer incidence rates *while taking income into account*.  The approach I'm thinking of is rather simple mathematically, but requires some thought to come up with.  
-
-Notes: 
-
-* You should use the solutions from HW02.
-* Do not import the shapefiles using the code from Lecture 20, but rather the `readOGR()` function from Lectures 23 and 25.  
+* A map of the median income **quintiles**.  
+* A map of that gives a sense of census tracts with high and low breast cancer incidence rates *while taking income into account*.  
 
 ### Breast Cancer Incidence Rate
 ```{r, echo=FALSE}
-# Import data (FROM HW2).
+# Import data and clean data.
 SEER <- read.csv("Space Time Surveillance Counts 11_05_09.txt", header=TRUE) %>% tbl_df()
-
-# Rename column.
 names(SEER)[1] <- "FIPS"
-```
 
-```{r,echo=FALSE}
 cancer.data <- SEER %>%
   filter(SiteRecodeTxt == "Breast ") %>%
   group_by(FIPS) %>%
@@ -58,8 +44,7 @@ cancer.data <- SEER %>%
 
 ```{r, echo=FALSE}
 # Convert shapefile into "Spatial Polygons" AKA "sp" object
-WW <- readShapeSpatial("ww")
-
+WW <- readOGR(dsn=".", layer="ww", verbose=FALSE) 
 WW.data <- WW@data %>% tbl_df()
 
 suppressWarnings(
@@ -98,6 +83,7 @@ names(census)[names(census)=="Geo_FIPS"] <- "FIPS_code"
 names(census)[names(census)=="SE_T093_001"] <- "Median_Household_Income"
 census$income_quantile <- 0
 
+# Breaks up census tracks into quantiles.
 for(i in 1:5){
   u <- quantile(census$Median_Household_Income, (i/5))[[1]]
   l <- quantile(census$Median_Household_Income, ((i-1)/5))[[1]]
@@ -149,7 +135,7 @@ WW.map %<>% mutate(income_cancer = Median_Household_Income*cancer_rate)
 ggplot(data=WW.map, aes(x=long, y=lat, group=group, fill = income_cancer)) +
   geom_polygon() +
   geom_path(color="black", size=0.25) +
-  xlab("Longitude") + ylab("Latitude")
+  xlab("Longitude") + ylab("Latitude") 
 ```
 
 ```{r, echo=FALSE, fig.with = 1.5, fig.height = 6}
@@ -157,7 +143,7 @@ ggplot(data=WW.map, aes(x=long, y=lat, group=group, fill = income_cancer)) +
   geom_polygon() +
   geom_path(color="black", size=0.5) +
   xlab("Longitude") + ylab("Latitude") + 
-  coord_cartesian(xlim = c(-122.75, -122), ylim = c(47.0, 48.0)) 
+  coord_cartesian(xlim = c(-122.75, -122), ylim = c(47.0, 48.0))
 ```
 
 Our image shows brighter spots in the wealthier areas, suggesting that wealthier communities tend to have higher rates of breast cancer. 
@@ -189,7 +175,7 @@ $H_0$: There is no increase between cancer rate and income quantiles.
 
 $H_A$: There is an increase between cancer rate and income quantiles.
 
-```{r}
+```{r, echo=FALSE}
 trend <- aov(incidence ~ factor(income_quantile), data = census)
 summary(trend)
 ```
@@ -198,30 +184,25 @@ With a p-val less than 0.05, we reject $H_0$ in favor of $H_A$. This means our d
 
 ## Question 2:
 
-Download the results of the 2000 election from the [School of Public Affairs at American University in DC](http://www.american.edu/spa/ccps/Data-Sets.cfm) and create two maps involving only the lower 48 states that show:
+We'll now turn our attention to the 2000 U.S presidential election featuring republican candidate (and later, president) George W. Bush and democtratic candidate Al Gore. The data is from the [School of Public Affairs at American University in DC](http://www.american.edu/spa/ccps/Data-Sets.cfm), and keeps track of the number of votes per candidate by county. (Note: The county map is from 2010, whereas the election data is from 2000, so a few counties will not match up.  The number is not that large.)
 
-* The proportion of people who voted for Bush at a **state** level
-* The proportion of people who voted for Bush at a **census tract** level
+Using this data, we'll make a map showing the proportion of voters who voted for Bush at a **state** level and at a **county** level. We'll have the red indicate the regions that favor Bush, the blue indicate the regions that don't favor him, and the white represent the regions that remained in the middle. 
 
-where
+```{r, echo=FALSE}
+# White does a better job of showing the small differences than purple, 
+# since it's easier to see a faint shade of pink than a slightly more 
+# red shade of purple. However, if we must have it in purple, you can 
+# change the following from "white" to "purple", and it will change all
+# of the plots.
 
-* Census tracts are filled with red when they tend to favor Bush
-* Census tracts are filled with blue when they tend to not favor Bush
-* Census tracts are filled with white when they tend to be split
+middlecolor <- "white"
+```
+With our data set, we will consider:
 
-Then answer the following questions:
+1. The biggest differences when changing from "census tract" resolution to "state" resolution.
+2. How the maps align with the idea of the [Nine Nations of North America](http://en.wikipedia.org/wiki/The_Nine_Nations_of_North_America)
+3. Which states exhibit the greatest **within state heterogeneity** in voting? 
 
-1. Comment on the biggest differences when changing from "census tract" resolution to "state" resolution.
-2. Comment on how the maps align with the idea of the [Nine Nations of North America](http://en.wikipedia.org/wiki/The_Nine_Nations_of_North_America)
-3. Which states exhibit the greatest **within state heterogeneity** in voting?  Come up with a mathematical justification.
-
-
-Notes:
-
-* Hint:  `scale_fill_gradient2(name="", low="blue", high="red", mid="purple")` for the appropriate "mid" point.  See the ggplot2 webpage for this command for inspiration.
-* I believe the county map is from 2010, whereas the election data is from 2000, as such certain census tracts will not match up.  The number is not that large.
-* [Counties in Virginia](http://en.wikipedia.org/wiki/List_of_counties_in_Virginia)
-* The following code should help:
 
 ```{r,echo = FALSE}
 # This function eliminates all non-alphanumeric characters and spaces and 
@@ -235,19 +216,23 @@ clean.text <- function(text){
 
 # State and county map of US in 2010
 US.state <- map_data("state") %>% tbl_df()
+US.state$region <- clean.text(US.state$region) 
 US.county <- map_data("county") %>% tbl_df()
 US.county$subregion <- clean.text(US.county$subregion)
 ```
 
+
 ### State
+
+We'll start off at the state level, where we see quite a bit of red in the middle and light blue on the coasts.
 
 ```{r,echo=FALSE}
 # Clean data.
 election <- read.csv("COUNTY.csv", header=TRUE) %>% tbl_df()
 election$COUNTY <- clean.text(election$COUNTY) 
 election$STATE <- clean.text(election$STATE) 
-election$BUSH <- as.numeric(election$BUSH)
-election$GORE <- as.numeric(election$GORE)
+election$BUSH <- as.numeric(election$BUSH) %>% na.omit()
+election$GORE <- as.numeric(election$GORE) %>% na.omit()
 election$NADER <- as.numeric(election$NADER)
 election$BUCHANAN <- as.numeric(election$BUCHANAN)
 election$BROWNE <- as.numeric(election$BROWNE)
@@ -263,46 +248,82 @@ election$BROWN <- as.numeric(election$BROWN)
 election$VENSON <- as.numeric(election$VENSON)
 election$YOUNGKEIT <- as.numeric(election$YOUNGKEIT)
 election$LANE <- as.numeric(election$LANE)
+election %<>%  mutate(OTHER = (BUCHANAN + BROWNE + PHILLIPS + WRITEINS + HAGELIN + MCREYNOLDS + HARRIS +
+                                 DODGE + NOTA + MOOREHEAD + BROWN + VENSON + YOUNGKEIT + LANE))
 
-state.map <- election %>%   
-  mutate(OTHER = (BUCHANAN + BROWNE + PHILLIPS + WRITEINS + HAGELIN + MCREYNOLDS + HARRIS + DODGE + NOTA + MOOREHEAD + BROWN + VENSON + YOUNGKEIT + LANE)) %>%
+# Make state data frame.
+state.map <- election %>%
+  group_by(STATE) %>%  
   group_by(STATE) %>% 
-  summarise(BUSH = sum(BUSH), 
-            GORE = sum(GORE), 
-            OTHER = sum(OTHER), na.rm = TRUE)
+  summarise(BUSH = sum(BUSH), GORE = sum(GORE), OTHER = sum(OTHER))
 
 state.map <- left_join(US.state, state.map, by = c("region"="STATE"))
 
-ggplot(data=state.map, aes(x=long, y=lat, group=group, fill = (BUSH/(BUSH + GORE)))) +
+# Full view.
+ggplot(data=state.map, aes(x=long, y=lat, group=group, fill = (BUSH/(BUSH + GORE + OTHER)))) +
   geom_polygon() +
   geom_path(color="black", size=0.1) +
   xlab("Longitude") + ylab("Latitude") +
   coord_map() + 
-  scale_fill_gradient2(name="", low="dodgerblue4", high="firebrick3", mid="white",
+  scale_fill_gradient2(name="", low="dodgerblue4", high="firebrick3", mid=middlecolor,
                        midpoint = 0.5,
                        na.value = "transparent")
+
+# Zoomed up to NE.
+ggplot(data=state.map, aes(x=long, y=lat, group=group, fill = (BUSH/(BUSH + GORE+ OTHER)))) +
+  geom_polygon() +
+  geom_path(color="black", size=0.1) +
+  xlab("Longitude") + ylab("Latitude") +
+  coord_map() + 
+  scale_fill_gradient2(name="", low="dodgerblue4", high="firebrick3", mid=middlecolor,
+                       midpoint = 0.5,
+                       na.value = "transparent") + 
+  coord_cartesian(xlim = c(-80, -67), ylim = c(35, 47.7)) 
 ```
 
 ### County
 
+Now we focus our attention at the county level, to get a better sense of individual regions' preferences. 
+
 ```{r,echo=FALSE}
 county.map <- left_join(US.county, election, by = c("subregion"="COUNTY"))
 
-ggplot(data=county.map, aes(x=long, y=lat, group=group, fill = BUSH/(BUSH+GORE))) +
+# Full view.
+ggplot(data=county.map, aes(x=long, y=lat, group=group, fill = BUSH/(BUSH+GORE+OTHER))) +
   geom_polygon() +
   geom_path(color="black", size=0.01) +
   coord_map() + 
   xlab("Longitude") + ylab("Latitude") +
-  scale_fill_gradient2(name="", low="dodgerblue4", high="firebrick3", mid="white",
+  scale_fill_gradient2(name="", low="dodgerblue4", high="firebrick3", mid=middlecolor,
                        midpoint = 0.5,
                        na.value = "transparent")
+
+# Zoomed up to NE.
+ggplot(data=county.map, aes(x=long, y=lat, group=group, fill = BUSH/(BUSH+GORE+OTHER))) +
+  geom_polygon() +
+  geom_path(color="black", size=0.01) +
+  coord_map() + 
+  xlab("Longitude") + ylab("Latitude") +
+  scale_fill_gradient2(name="Percentage of Votes\nfor Bush", 
+                       low="dodgerblue4", high="firebrick3", mid=middlecolor,
+                       midpoint = 0.5,
+                       na.value = "transparent") + 
+  coord_cartesian(xlim = c(-100, -67), ylim = c(25, 50))
 ```
 
 Now with the maps on the table, we can take a stab at answering some of the questions.
 
 ### State vs. County Resolution
 
+Right off the bat we notice that looking at the counties map, we see a lot of red! It's difficult to get a sense for exactly how "blue" or "red" a state is since many of the counties that have the largest area (and are very sparsely populated) are red. The dark blue counties that rarely show up have a lot more weight than their size implies since they represent much more densley populated metropolitan areas. 
+
+We'll take the example of California. If we look at the counties map, most of California is covered in red or pink except for the LA and SF regions. But looking at the state map, we see that overall the state voted democrat. 
+
 ### Nine Nations of North America
+
+![The Nine Nations](Ninenations.png) (Image credit to "Ninenations" by A Max J.)
+
+The counties map seems to fit well with the Nine Nations of North America idea. Starting on the NW coast, we see a lot more blue along the coast, corresponding to 'Ecotopia'. The 'Empty Quarter' is, for the most part, made up of large republican counties. Further south in 'Mexamerica', these counties start gaining some blue. This democrat skew is also seen in the "nation" of 'New England'. We look at the state map to spot the differences between the lightly-blue 'Foundry' and the red 'Dixie'. Finally, it's hard to get a sense for the "Breadbasket", since the political orientation doesn't seem as consistent as in the other "nations".
 
 ### Greatest Within State Heterogeneity
 
@@ -311,7 +332,7 @@ We get a sense for the most conflicted states by looking at the standard deviati
 ```{r, echo=FALSE}
 # Find the top ten states with the highest standard deviation.
 conflicted <- election %>%
-  mutate(RedvsBlue = BUSH/(BUSH+GORE)) %>%
+  mutate(RedvsBlue = BUSH/(BUSH+GORE+OTHER)) %>%
   group_by(STATE) %>%
   summarize(std_dev = sd(RedvsBlue)) %>%
   arrange(desc(std_dev)) %>%
@@ -332,18 +353,3 @@ The plot above shows the ten states with the highest standard deviation in perce
 (b) huge regions that are mostly unpopulated. 
 
 If we look at the states on the above map, we confirm that states like New Mexico, Oregon, Texas, California, Alabama, etc. all seem to share these features.  
-
-## Question 3:
-
-The Chief of the Portland Police is tired of reading through pages of crime reports and wants an interactive tool to visualize where different crimes occured during the years 2004 and 2013.  Obtain crime data for Portland for years 2004 through 2013 from the [CivicApps](http://www.civicapps.org/datasets) site, create (in a separate `.Rmd` file) an appropriate Shiny app, and publish it online.  Post the hyperlink [here](http://canadiens.nhl.com/?navid=nav-teamnav-mtl).  
-
-Your Shiny app should take in two inputs.  Think carefully which is the best way to have users input these:
-
-* A way to select the year:  2004, 2005, ..., 2013, or all
-* Select the crime
-
-Using this app, answer the following questions:
-
-* What crimes appear to have unequal spatial enforcement?
-* What crimes are the most related to each other?
-* If the Portland Police receives a large grant from the state government to fight crime, what do you think it should do?
