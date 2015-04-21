@@ -21,7 +21,7 @@ suppressPackageStartupMessages(library(BH))
 
 ## The Data
 
-The graphic below depicts crime incidents in Portland, OR over the span of a full year. The data was obtained from the [CivicApps](http://www.civicapps.org/datasets) website,and  can be divided by year (from 2006 to 2013) or by type of crime. In examining this data, keep in mind the following questions:
+The graphic below depicts crime incidents in Portland, OR over the span of a full year. The data was obtained from the [CivicApps](http://www.civicapps.org/datasets) website,and  can be divided by year (from 2004 to 2014) or by type of crime. In examining this data, keep in mind the following questions:
 
 * What crimes appear to have unequal spatial enforcement?
 * What crimes are the most related to each other?
@@ -87,7 +87,8 @@ crime_data <- crime_data %>%
 # Input parameters.
 inputPanel(
   selectInput("year", label = "Year:",
-              choices = c("All Years",2013,2012,2011,2010,2009,2008,2007,2006), selected = 2013),
+              choices = c("All Years",2014,2013,2012,2011,2010,2009,2008,2007,2006,2005,2004), selected = 2013,
+               multiple = TRUE),
   
   selectInput("crime", label = "Crime:",
                choices = c("Aggravated Assault","Arson","Assault, Simple","Burglary","Curfew","Disorderly Conduct","Drugs","DUII","Embezzlement","Forgery","Fraud","Gambling","Homicide","Kidnap","Offenses Against Family","Weapons","Trespass","Vandalism","Rape","Runaway","Robbery","Stolen Property","Larceny","Sex Offenses", "Liquor Laws","Motor Vehicle Theft","Prostitution")
@@ -101,7 +102,7 @@ inputPanel(
       crime_data$group <- 76
       
       ifelse(input$year %in% "All Years",
-        tyear <- as.numeric(c(2006:2013)),
+        tyear <- as.numeric(c(2004:2014)),
         tyear <- as.numeric(c(input$year)))
   
       # Define data.
@@ -138,7 +139,7 @@ inputPanel(
       print(map, vp = viewport(layout.pos.row = 1, layout.pos.col = 1:6))
       print(hist, vp = viewport(layout.pos.row = 1, layout.pos.col = 6:7)) 
       #grid.arrange(map, hist, ncol=2)
-    }, height = 600 )
+    }, height = 600, width = 800 )
 
 ```
 
