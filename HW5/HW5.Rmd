@@ -7,7 +7,7 @@ output: html_document
 
 Please indicate
 
-* Approximately how much time you spent on this homework: 1 + 11:45-12:00 + 8:00 - 
+* Approximately how much time you spent on this homework: 4
 * What, if anything, gave you an exceeding amount of trouble?  By exceeding I mean above and beyond run-of-the-mill difficulties when learning new things.   
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
@@ -40,12 +40,12 @@ I'll present the top `n` "interesting" words used in each of the four data sets,
 Many thanks to Mitchell Linegar for gathering the data.  The python code used to scrape the data can be found [here](https://github.com/mlinegar/RedditScraping).  
 
 ```{r}
-# Define parameters. The variable 'topic' defines what is searched in Twitter. 
-n <- 30
-nt <- 1000      # n for number of tweets.
-start.date <- "2013-01-01"
-end.date <- "2015-04-30"
-topic <- "data"
+# Define parameters. 
+n <- 30                     # Number of words in word cloud.
+nt <- 1000                 # Number of tweets searched.
+start.date <- "2015-01-01"  # Start date of Twitter search.
+end.date <- "2015-04-30"    # End date of Twitter search.
+topic <- "data science"     # 'topic' defines what is searched in Twitter. 
 ```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
@@ -73,7 +73,11 @@ invisible(VectorSource(reed$V1) %>% Corpus())
 wordcloud(reed$V1, scale=c(5,0.5), max.words=n, random.order=FALSE,
           rot.per=0.35, use.r.layout=FALSE, colors=brewer.pal(8, "Reds"))
 title(paste(paste("Top",n),"words in\nr/Reed"))
+```
 
+We see that a lot of the words indicate personal opinions, presumably becuase the subreddit is filled with questions from prospective students which are then answered by current students. 
+
+```{r, echo=FALSE, warnings= FALSE}
 # Make list of top 'n' words.
 top.reed <- str_split(reed$V1, pattern= " ") %>%
   unlist() %>%
@@ -106,7 +110,11 @@ invisible(VectorSource(portland$V1) %>% Corpus())
 wordcloud(portland$V1, scale=c(5,0.5), max.words=n, random.order=FALSE, 
           rot.per=0.35, use.r.layout=FALSE, colors=brewer.pal(8, "YlGn"))
 title(paste(paste("Top",n),"words in\nr/Portland"))
+```
 
+It's difficult to find a really clear topic or pattern, but it appears that many of the words have positive associatios (e.g. "like","good","well", "think", "make").
+
+```{r, echo=FALSE, warning=FALSE}
 # Make list of top 'n' words.
 top.pdx <- str_split(portland$V1, pattern= " ") %>%
   unlist() %>%
@@ -122,8 +130,7 @@ colnames(top.pdx) <- c("Word","Counts")
 
 # Make data table.
 datatable(top.pdx)
-```
-
+``` 
 
 ### Twitter
 
@@ -150,16 +157,20 @@ tweets <- VectorSource(base_tweets$.) %>%
 # and everything else isn't as common. For this reason, it's difficult to see the 
 # uncommon words with sequential color scheme that fades away. It's better to use
 # a qualitative color scheme, and base word frequency on the size of the word. 
-wordcloud(tweets, scale=c(5,0.5), max.words=100, random.order=FALSE, 
+wordcloud(tweets, max.words=100,scale=c(5,0.5), random.order=FALSE, 
           rot.per=0.35, use.r.layout=FALSE, colors=brewer.pal(8, "Dark2"))
 title(paste(paste(paste(paste(paste("Tweets about", topic),"from\n "),start.date), "to"),end.date))
+```
 
+We look at the first 1000 tweets about `data science` since the start of the year. The big ones are "data", "science", "bigdata", and "datascience", which are not huge surprises since those are the terms we used. It turns out there's another interesting grouping of words: "mars", "nasa", "curiosity", "rover", "marsrover", etc.. I actually spent last summer at the University of Arkansas doing physics research and analyzing data from these rovers; I was ahead of the curve! Also, there are a ouple of buissiness/industry terms and academic terms. Finally, "orgasm" reveals the heightened sexual appeal that accompanies data science.
+
+```{r, echo=FALSE, warning=FALSE}
 # Make list of top 'n' words.
 top.tweets <- str_split(tweets, pattern= " ") %>%
   unlist() %>%
   table() %>%
   sort(decreasing=TRUE) %>%
-  .[1:n] %>%
+  .[1:50] %>%
   data.frame()
 
 # Name columns
@@ -173,7 +184,7 @@ datatable(top.tweets)
 
 ### The Lost World -- Sir Arthur Conan Doyle
 
-While sir Arthur Conan Doyle was most famous for creating Sherlock Holmes, he also wrote a couple of other books, one of which I happened upon one summer in highschool. In The Lost World, Doyle tells recounts the story of a group of English adventureres who travel to South America and stumble upon an isolated platuea with... DINOSAURS! 
+Sir Arthur Conan Doyle was most famous for creating Sherlock Holmes, but he also wrote a couple of other books, one of which I happened upon one summer in highschool. In \underline{The Lost World}, Doyle tells recounts the story of a group of English adventureres who travel to South America and stumble upon an isolated platuea with... DINOSAURS! 
 
 ```{r, echo=FALSE}
 the.lost.world %<>% tolower() %>%
@@ -195,8 +206,12 @@ book <- the.lost.world %>%
 invisible(VectorSource(the.lost.world) %>% Corpus())
 wordcloud(the.lost.world, scale=c(5,0.5), max.words=n, random.order=FALSE,
           rot.per=0.35, use.r.layout=FALSE, colors=brewer.pal(8, "BuPu"))
-title(paste(paste("Top",n),"words in\nThe Lost World"))
+title(paste(paste("Top",n),"words in\n`The Lost World`"))
+```
 
+With the word cloud we get a sense for some of the characters in the novel (i.e. professor Challenger, professor Summerlee, and lord John Roxton).
+
+```{r, echo=FALSE}
 # Name columns.
 book <- cbind(rownames(book), book)
 rownames(book) <- NULL
