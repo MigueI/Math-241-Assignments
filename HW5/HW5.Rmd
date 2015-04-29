@@ -7,7 +7,7 @@ output: html_document
 
 Please indicate
 
-* Approximately how much time you spent on this homework: 9:30-
+* Approximately how much time you spent on this homework: 1 + 11:45-12:00 + 8:00 - 
 * What, if anything, gave you an exceeding amount of trouble?  By exceeding I mean above and beyond run-of-the-mill difficulties when learning new things.   
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
@@ -19,41 +19,42 @@ suppressPackageStartupMessages(library(tm))
 suppressPackageStartupMessages(library(stringr))
 suppressPackageStartupMessages(library(htmlwidgets))
 suppressPackageStartupMessages(library(DT))
+#suppressPackageStartupMessages(library(sentiment))
+suppressPackageStartupMessages(library(twitteR))
+
 ```
 
 
 
 ## Question 1:
 
-The goal of this question is to do a naive [sentiment analysis](https://sites.google.com/site/miningtwitter/questions/sentiment/sentiment) of various text data.  For the
+Let's analyze some of the text from the following sources:
 
-1. Reed College subreddit
-2. Portland subreddit
-3. A scraping of all tweets using a word, hashtag, Twitter ID of your choice for a given date range defined by `start.date` and `end.date` (geo-location is optional).
-4. Any novel on [Project Gutenberg](http://www.gutenberg.org/).  These tend to be books whose copyrights have expired i.e. older books.  
+1. Reed College subreddit,
+2. Portland subreddit,
+3. A scraping of all tweets using a word, hashtag, Twitter ID of your choice for a given date range defined by `start.date` and `end.date` (geo-location is optional),
+4. Sir Arthur Conan Doyle's novel called The Lost World [Project Gutenberg](http://www.gutenberg.org/).
 
-Identify the top `n` "interesting" words used in each (I leave this definition deliberately vague:  noteworthy, distinguisable, discriminating).  Display your results both
-
-* In table along with their counts.  Use either:
-    + The `xtable()` command in the `xtable` package
-    + The `kable()` command in the `knitr` package
-    + The `DT` data table package to make an interactive table: [http://rstudio.github.io/DT/](http://rstudio.github.io/DT/)
-* In a Wordcloud with a `title()` that auto-updates itself to changes in the value of `n` and in the case of the Twitter data, the specified date range.  In other words, one should only have to change the first three variable definitions below and the title should update itself.    
+I'll present the top `n` "interesting" words used in each of the four data sets, in a word cloud and a data table.    
     
 Many thanks to Mitchell Linegar for gathering the data.  The python code used to scrape the data can be found [here](https://github.com/mlinegar/RedditScraping).  
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE}
-# Define parameters.
-n <- 50
-start.date <- "2015-04-01"
+```{r}
+# Define parameters. The variable 'topic' defines what is searched in Twitter. 
+n <- 30
+nt <- 1000      # n for number of tweets.
+start.date <- "2013-01-01"
 end.date <- "2015-04-30"
+topic <- "data"
+```
 
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 # Import data.
 reed <- read.csv("reedcollege.comments.csv", stringsAsFactors = FALSE, header=FALSE) %>%
   tbl_df() 
-
 portland <- read.csv("portland.comments.csv", stringsAsFactors = FALSE, header=FALSE) %>%
   tbl_df()
+the.lost.world <- readLines("The_Lost_World.txt", encoding="UTF-8")
 ```
 
 ### Reed College subreddit
@@ -67,6 +68,12 @@ reed$V1 %<>% tolower() %>%
   stemDocument() %>%
   stripWhitespace()
 
+# Make word cloud.
+invisible(VectorSource(reed$V1) %>% Corpus())
+wordcloud(reed$V1, scale=c(5,0.5), max.words=n, random.order=FALSE,
+          rot.per=0.35, use.r.layout=FALSE, colors=brewer.pal(8, "Reds"))
+title(paste(paste("Top",n),"words in\nr/Reed"))
+
 # Make list of top 'n' words.
 top.reed <- str_split(reed$V1, pattern= " ") %>%
   unlist() %>%
@@ -76,17 +83,125 @@ top.reed <- str_split(reed$V1, pattern= " ") %>%
   data.frame()
 
 # Name columns
-top.reed <- cbind(rownames(top.reed), top.reed)
-rownames(top.reed) <- NULL
-colnames(top.reed) <- c("Word","Counts")
+ top.reed <- cbind(rownames(top.reed), top.reed)
+ rownames(top.reed) <- NULL
+ colnames(top.reed) <- c("Word","Counts")
 
 # Make data table.
-datatable(top.reed)
+ datatable(top.reed)
+```
+
+### Portland subreddit
+
+```{r, echo=FALSE, warning=FALSE}
+portland$V1 %<>% tolower() %>%
+  removeNumbers() %>%
+  removePunctuation() %>%
+  removeWords(stopwords("english")) %>%
+  stemDocument() %>%
+  stripWhitespace()
 
 # Make word cloud.
-invisible(VectorSource(reed$V1) %>% Corpus())
-wordcloud(reed$V1, scale=c(5,0.5), max.words=n, random.order=FALSE,
-          rot.per=0.35, use.r.layout=FALSE, colors=brewer.pal(8, "Reds"))
+invisible(VectorSource(portland$V1) %>% Corpus())
+wordcloud(portland$V1, scale=c(5,0.5), max.words=n, random.order=FALSE, 
+          rot.per=0.35, use.r.layout=FALSE, colors=brewer.pal(8, "YlGn"))
+title(paste(paste("Top",n),"words in\nr/Portland"))
+
+# Make list of top 'n' words.
+top.pdx <- str_split(portland$V1, pattern= " ") %>%
+  unlist() %>%
+  table() %>%
+  sort(decreasing=TRUE) %>%
+  .[1:n] %>%
+  data.frame()
+
+# Name columns
+top.pdx <- cbind(rownames(top.pdx), top.pdx)
+rownames(top.pdx) <- NULL
+colnames(top.pdx) <- c("Word","Counts")
+
+# Make data table.
+datatable(top.pdx)
 ```
 
 
+### Twitter
+
+```{r, echo=FALSE, warnings=FALSE}
+# Get past tweets about 'topic' from twitter from 'start.date' until 'end.date'.
+base_tweets <- searchTwitter(topic, lang="en",n=nt, since=start.date, until=end.date) %>%
+  sapply(function(x) x$getText()) %>%
+  data.frame()
+
+
+# Clean it up.  
+tweets <- VectorSource(base_tweets$.) %>%
+  Corpus() %>%  
+  tm_map( function(x) iconv(x, to='UTF-8-MAC', sub='byte')) %>%
+  tolower() %>%
+  removeNumbers() %>%
+  removePunctuation() %>%
+  removeWords(stopwords("english")) %>%
+  stemDocument() %>%
+  stripWhitespace()
+
+# Make wordcloud.
+# For some reason on twitter, there seem to be some words that appear VERY frequently, 
+# and everything else isn't as common. For this reason, it's difficult to see the 
+# uncommon words with sequential color scheme that fades away. It's better to use
+# a qualitative color scheme, and base word frequency on the size of the word. 
+wordcloud(tweets, scale=c(5,0.5), max.words=100, random.order=FALSE, 
+          rot.per=0.35, use.r.layout=FALSE, colors=brewer.pal(8, "Dark2"))
+title(paste(paste(paste(paste(paste("Tweets about", topic),"from\n "),start.date), "to"),end.date))
+
+# Make list of top 'n' words.
+top.tweets <- str_split(tweets, pattern= " ") %>%
+  unlist() %>%
+  table() %>%
+  sort(decreasing=TRUE) %>%
+  .[1:n] %>%
+  data.frame()
+
+# Name columns
+top.tweets <- cbind(rownames(top.tweets), top.tweets)
+rownames(top.tweets) <- NULL
+colnames(top.tweets) <- c("Word","Counts")
+
+# Make data table.
+datatable(top.tweets)
+```
+
+### The Lost World -- Sir Arthur Conan Doyle
+
+While sir Arthur Conan Doyle was most famous for creating Sherlock Holmes, he also wrote a couple of other books, one of which I happened upon one summer in highschool. In The Lost World, Doyle tells recounts the story of a group of English adventureres who travel to South America and stumble upon an isolated platuea with... DINOSAURS! 
+
+```{r, echo=FALSE}
+the.lost.world %<>% tolower() %>%
+  removeNumbers() %>%
+  removePunctuation() %>%
+  removeWords(stopwords("english")) %>%
+  stemDocument()
+  
+book <- the.lost.world %>%
+  paste(collapse=" ") %>%
+  stripWhitespace() %>%
+  str_split(pattern=" ") %>%
+  table() %>%
+  sort(decreasing=TRUE) %>%
+  .[1:n] %>%
+  data.frame()
+
+# Make wordcloud.
+invisible(VectorSource(the.lost.world) %>% Corpus())
+wordcloud(the.lost.world, scale=c(5,0.5), max.words=n, random.order=FALSE,
+          rot.per=0.35, use.r.layout=FALSE, colors=brewer.pal(8, "BuPu"))
+title(paste(paste("Top",n),"words in\nThe Lost World"))
+
+# Name columns.
+book <- cbind(rownames(book), book)
+rownames(book) <- NULL
+colnames(book) <- c("Word","Counts")
+
+# Data table. 
+datatable(book)
+```

@@ -1,0 +1,165 @@
+---
+title: "PDX Crime"
+author: "Miguel"
+date: "April 15, 2015"
+output: html_document
+runtime: shiny
+---
+
+```{r, echo = FALSE}
+#ALBERT: Please note that the shiny app (PDX_Crime.Rmd) runs with a single data set called "crime_data.csv",  which I have uploaded with my HW. (Sorry, organized this data set beforehand to make things smoother,  and it would probably take a while to change things around... :/) 
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(tidyr))
+suppressPackageStartupMessages(library(ggmap))
+suppressPackageStartupMessages(library(rgdal))
+suppressPackageStartupMessages(require(gridExtra))
+suppressPackageStartupMessages(library(BH))
+```
+
+
+## The Data
+
+The graphic below depicts crime incidents in Portland, OR over the span of a full year. The data was obtained from the [CivicApps](http://www.civicapps.org/datasets) website,and  can be divided by year (from 2004 to 2014) or by type of crime. In examining this data, keep in mind the following questions:
+
+* What crimes appear to have unequal spatial enforcement?
+* What crimes are the most related to each other?
+* If the Portland Police receives a large grant from the state government to fight crime, what do you think it should do?
+
+```{r, echo=FALSE}
+# Covert to lat and long.
+NAD.to.latlong <- function(coords){
+  proj <- "+proj=lcc +lat_1=44.33333333333334 +lat_2=46 +lat_0=43.66666666666666 +lon_0=-120.5 +x_0=2500000 +y_0=0 +ellps=GRS80 +units=ft +no_defs"
+  coords <-
+    as.data.frame(coords) %>%
+    SpatialPoints(proj4string=CRS(proj)) %>%
+    spTransform(CRS("+proj=longlat +ellps=WGS84")) %>%
+    .@coords %>%
+    as.data.frame() %>%
+    rename(long=X.Coordinate, lat=Y.Coordinate)
+  return(coords)
+}
+```
+
+```{r, echo=FALSE, message=FALSE}
+# The map is centered whereever Google Maps centers the map when you search
+# "Portland, OR".  Higher the zoom, the closer in you get.
+
+google.map <-
+    get_map(location = "Portland, OR", maptype = "roadmap", zoom = 10, color = "color")
+
+```
+
+```{r, echo = FALSE}
+# Import data. CSV files from all years have been merged into one file using Terminal.
+crime_data <- read.csv("crime_data.csv", header = TRUE) %>% tbl_df()
+
+# Clean up date data.
+suppressWarnings(
+  crime_data <- crime_data %>% mutate(date = mdy(date))
+  )
+
+# A certain number of the geocoordinates are missing.
+# Remove these.  We have to be careful about the bias this may entail.  A more
+# thorough analysis would see if there is a pattern in which data are missing.
+suppressWarnings(
+  crime_data <- crime_data %>%
+    mutate(
+      X.Coordinate = as.numeric(as.character(X.Coordinate)),
+      Y.Coordinate = as.numeric(as.character(Y.Coordinate))
+      ) %>%
+    filter(!is.na(X.Coordinate) & !is.na(Y.Coordinate)) %>%
+    filter(X.Coordinate != "" & Y.Coordinate != "")
+)
+
+lat.long <- 
+  select(crime_data, X.Coordinate, Y.Coordinate) %>%
+  NAD.to.latlong()
+
+crime_data <- bind_cols(crime_data, lat.long)
+crime_data <- crime_data %>%
+        mutate(crimeyear = as.numeric(year(as.POSIXlt(date))))
+```
+
+
+```{r, echo=FALSE}
+# Input parameters.
+inputPanel(
+  selectInput("year", label = "Year:",
+              choices = c("All Years",2014,2013,2012,2011,2010,2009,2008,2007,2006,2005,2004), selected = 2014,
+               multiple = TRUE),
+  
+  selectInput("crime", label = "Crime:",
+               choices = c("Aggravated Assault","Arson","Assault, Simple","Burglary","Curfew","Disorderly Conduct","Drugs","DUII","Embezzlement","Forgery","Fraud","Gambling","Homicide","Kidnap","Offenses Against Family","Weapons","Trespass","Vandalism","Rape","Runaway","Robbery","Stolen Property","Larceny","Sex Offenses", "Liquor Laws","Motor Vehicle Theft","Prostitution")
+               )
+  )
+
+    renderPlot({
+      # Deal with variables and inputs.
+      crime <- input$crime
+      year <- input$year
+      crime_data$group <- 76
+      
+      ifelse(input$year %in% "All Years",
+        tyear <- as.numeric(c(2004:2014)),
+        tyear <- as.numeric(c(input$year)))
+      
+      # Define data.
+      ifelse(input$year !="All Years",
+            crimedata <- subset(crime_data, offense == crime & year(date) %in% input$year),
+            crimedata <- subset(crime_data, offense == crime)
+      )
+      
+      
+  
+      dt <- crime_data %>% 
+        group_by(crimeyear, offense) %>%
+        subset(offense == crime)
+      
+      # Make map.  
+      map <- ggmap(google.map) +
+        xlab("Longitude") + ylab("Latitude") +
+        coord_map() + 
+        geom_point(data = crimedata, aes(x=long, y=lat, group=group, alpha = 0.05)) + 
+        geom_density2d(data = crimedata, aes(x=long, y=lat, group=group), col="red") +
+        coord_cartesian(xlim = c(-122.8, -122.4), ylim = c(45.40,45.65)) +
+        theme(legend.position="none")
+  
+      hist <- ggplot(dt, aes(crimeyear)) + 
+        geom_histogram(data=subset(dt,crimeyear %in% tyear),binwidth=1,fill="red") + 
+        geom_histogram(data=subset(dt,!(crimeyear %in% tyear)),binwidth=1,fill="gray25") +
+        coord_cartesian(xlim = c(min(crime_data$crimeyear)+1, max(crime_data$crimeyear)+2)) + 
+        xlab("Year") + ylab("Number of Cases") + 
+        coord_flip() +
+        ggtitle(paste(paste("Number of Cases\n of",crime),"\nby Year"))
+    
+      grid.newpage() # Open a new page on grid device
+      pushViewport(viewport(layout = grid.layout(1, 7)))
+      print(map, vp = viewport(layout.pos.row = 1, layout.pos.col = 1:6))
+      print(hist, vp = viewport(layout.pos.row = 1, layout.pos.col = 6:7)) 
+      #grid.arrange(map, hist, ncol=2)
+    }, height = 600, width = 800 )
+
+```
+
+A histogram to the right of the map highlights the number of crimes that occured during the selected year.
+
+### Related Crimes
+
+We see that there is a large concentration of basically every crime in downtown, which makes sense since it's the most densely populated part of Portland. For aggravated assault, disorderly conduct, liquor laws, rape, sex offenses, and trespassing however, our density bubbles indacte that a disproportionatly large portion of the offenses occur in downtown. We can also attribute these patterns to the fact that downtown is walking-friendly, whereas the rest of Portland isn't. 
+
+
+###Unequal Spatial Enforcement
+
+We also see that there seems to be quite a bit of prostitution all along 82nd Ave, and a high density of DUI's centered around the Burnside bridge (a checkpoint, perhaps?). 
+
+
+
+### Suggestions for Portland Police
+
+Reinforce the number of cops in downtown, as their presence in this relatively small area would go a long way. This doesn't mean that they have to be driving around, they could be walking or biking around, but just as long as they are there. 
+
+Otherwise, you should probably know about the prositution thats going on near 82nd.
+
+
