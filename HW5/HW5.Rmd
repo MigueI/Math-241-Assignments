@@ -21,7 +21,10 @@ suppressPackageStartupMessages(library(htmlwidgets))
 suppressPackageStartupMessages(library(DT))
 #suppressPackageStartupMessages(library(sentiment))
 suppressPackageStartupMessages(library(twitteR))
-
+setup_twitter_oauth("RqgdfQCcQppz37yYuRfUtcjs6", 
+                    "Dr807kvpYGEHhSTuCkUc1RdTNt2l4h6vww7ta7CsDOPP2lDLSJ", 
+                    "3141816761-aPrPgAgWvinoiPayHtsSy09AhST8ltVegNLqCNV", 
+                    "WTiGKg3t91PiZV5LsGYiz0Ls93iLUDHdgpySOwSTkbwOH")
 ```
 
 

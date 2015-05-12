@@ -1,7 +1,6 @@
 ---
 title: "PDX Crime"
 author: "Miguel"
-date: "April 15, 2015"
 output: html_document
 runtime: shiny
 ---
@@ -21,11 +20,7 @@ suppressPackageStartupMessages(library(BH))
 
 ## The Data
 
-The graphic below depicts crime incidents in Portland, OR over the span of a full year. The data was obtained from the [CivicApps](http://www.civicapps.org/datasets) website,and  can be divided by year (from 2004 to 2014) or by type of crime. In examining this data, keep in mind the following questions:
-
-* What crimes appear to have unequal spatial enforcement?
-* What crimes are the most related to each other?
-* If the Portland Police receives a large grant from the state government to fight crime, what do you think it should do?
+The graphic below depicts crime incidents in Portland, OR over the span of a full year. The data was obtained from the [CivicApps](http://www.civicapps.org/datasets) website,and  can be divided by year (from 2004 to 2014) or by type of crime. A histogram to the right of the map highlights the number of crimes that occured during the selected year.
 
 ```{r, echo=FALSE}
 # Covert to lat and long.
@@ -142,24 +137,4 @@ inputPanel(
     }, height = 600, width = 800 )
 
 ```
-
-A histogram to the right of the map highlights the number of crimes that occured during the selected year.
-
-### Related Crimes
-
-We see that there is a large concentration of basically every crime in downtown, which makes sense since it's the most densely populated part of Portland. For aggravated assault, disorderly conduct, liquor laws, rape, sex offenses, and trespassing however, our density bubbles indacte that a disproportionatly large portion of the offenses occur in downtown. We can also attribute these patterns to the fact that downtown is walking-friendly, whereas the rest of Portland isn't. 
-
-
-###Unequal Spatial Enforcement
-
-We also see that there seems to be quite a bit of prostitution all along 82nd Ave, and a high density of DUI's centered around the Burnside bridge (a checkpoint, perhaps?). 
-
-
-
-### Suggestions for Portland Police
-
-Reinforce the number of cops in downtown, as their presence in this relatively small area would go a long way. This doesn't mean that they have to be driving around, they could be walking or biking around, but just as long as they are there. 
-
-Otherwise, you should probably know about the prositution thats going on near 82nd.
-
 
